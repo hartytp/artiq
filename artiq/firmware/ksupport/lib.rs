@@ -1,4 +1,4 @@
-#![feature(lang_items, asm, libc, panic_unwind, unwind_attributes)]
+#![feature(lang_items, asm, libc, panic_unwind, unwind_attributes, global_allocator)]
 #![no_std]
 
 extern crate unwind;
@@ -6,7 +6,7 @@ extern crate libc;
 extern crate byteorder;
 extern crate cslice;
 
-extern crate alloc_none;
+extern crate alloc_stub;
 extern crate std_artiq as std;
 
 extern crate board;
@@ -17,11 +17,15 @@ extern crate amp;
 use core::{mem, ptr, slice, str};
 use std::io::Cursor;
 use cslice::{CSlice, AsCSlice};
+use alloc_stub::StubAlloc;
 use board::csr;
 use dyld::Library;
 use proto::{kernel_proto, rpc_proto};
 use proto::kernel_proto::*;
 use amp::{mailbox, rpc_queue};
+
+#[global_allocator]
+static mut ALLOC: StubAlloc = StubAlloc;
 
 fn send(request: &Message) {
     unsafe { mailbox::send(request as *const _ as usize) }
@@ -30,7 +34,7 @@ fn send(request: &Message) {
 
 fn recv<R, F: FnOnce(&Message) -> R>(f: F) -> R {
     while mailbox::receive() == 0 {}
-    let result = f(unsafe { mem::transmute::<usize, &Message>(mailbox::receive()) });
+    let result = f(unsafe { &*(mailbox::receive() as *const Message) });
     mailbox::acknowledge();
     result
 }

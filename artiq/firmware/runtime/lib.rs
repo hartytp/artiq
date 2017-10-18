@@ -1,6 +1,5 @@
 #![no_std]
-#![feature(compiler_builtins_lib, alloc, oom, repr_simd, lang_items, const_fn,
-           closure_to_fn_coercion)]
+#![feature(compiler_builtins_lib, alloc, repr_simd, lang_items, const_fn, global_allocator)]
 
 extern crate compiler_builtins;
 extern crate alloc;
@@ -11,7 +10,7 @@ extern crate byteorder;
 extern crate fringe;
 extern crate smoltcp;
 
-extern crate alloc_artiq;
+extern crate alloc_list;
 #[macro_use]
 extern crate std_artiq as std;
 extern crate logger_artiq;
@@ -36,10 +35,7 @@ macro_rules! borrow_mut {
     })
 }
 
-#[cfg(has_spiflash)]
 mod config;
-#[cfg(not(has_spiflash))]
-#[path="config_dummy.rs"] mod config;
 mod ethmac;
 mod rtio_mgt;
 
@@ -63,6 +59,9 @@ fn startup() {
     info!("software version {}", include_str!(concat!(env!("OUT_DIR"), "/git-describe")));
     info!("gateware version {}", board::ident(&mut [0; 64]));
 
+    #[cfg(has_serwb_phy)]
+    board::serwb::wait_init();
+
     let t = board::clock::get_ms();
     info!("press 'e' to erase startup and idle kernels...");
     while board::clock::get_ms() < t + 1000 {
@@ -78,9 +77,11 @@ fn startup() {
     #[cfg(has_i2c)]
     board::i2c::init();
     #[cfg(has_ad9516)]
-    board::ad9516::init().expect("cannot initialize ad9516");
+    board::ad9516::init().expect("cannot initialize AD9516");
+    #[cfg(has_hmc830_7043)]
+    board::hmc830_7043::init().expect("cannot initialize HMC830/7043");
     #[cfg(has_ad9154)]
-    board::ad9154::init().expect("cannot initialize ad9154");
+    board::ad9154::init().expect("cannot initialize AD9154");
 
     let hardware_addr;
     match config::read_str("mac", |r| r?.parse()) {
@@ -164,6 +165,10 @@ fn startup() {
     }
 }
 
+#[global_allocator]
+static mut ALLOC: alloc_list::ListAlloc = alloc_list::EMPTY;
+static mut LOG_BUFFER: [u8; 1<<17] = [0; 1<<17];
+
 #[no_mangle]
 pub extern fn main() -> i32 {
     unsafe {
@@ -171,16 +176,10 @@ pub extern fn main() -> i32 {
             static mut _fheap: u8;
             static mut _eheap: u8;
         }
-        alloc_artiq::seed(&mut _fheap as *mut u8,
-                          &_eheap as *const u8 as usize - &_fheap as *const u8 as usize);
+        ALLOC.add_range(&mut _fheap, &mut _eheap);
 
-        alloc::oom::set_oom_handler(|| {
-            alloc_artiq::debug_dump(&mut board::uart_console::Console).unwrap();
-            panic!("out of memory");
-        });
-
-        static mut LOG_BUFFER: [u8; 1<<17] = [0; 1<<17];
         logger_artiq::BufferLogger::new(&mut LOG_BUFFER[..]).register(startup);
+
         0
     }
 }
