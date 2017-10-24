@@ -17,7 +17,7 @@ from misoc.integration.builder import builder_args, builder_argdict
 from artiq.gateware.amp import AMPSoC, build_artiq_soc
 from artiq.gateware import rtio, nist_clock, nist_qc2
 from artiq.gateware.rtio.phy import (ttl_simple, ttl_serdes_7series,
-                                     dds, spi)
+                                     dds, spi, ad5360_monitor)
 from artiq import __version__ as artiq_version
 
 
@@ -107,6 +107,27 @@ _sdcard_spi_33 = [
   )
 ]
 
+_zotino = [
+    ("zotino_spi_p", 0,
+        Subsignal("clk", Pins("HPC:LA08_P")),
+        Subsignal("mosi", Pins("HPC:LA09_P")),
+        Subsignal("miso", Pins("HPC:LA10_P")),
+        Subsignal("cs_n", Pins("HPC:LA11_P")),
+        IOStandard("LVDS_25")
+     ),
+    ("zotino_spi_n", 0,
+        Subsignal("clk", Pins("HPC:LA08_N")),
+        Subsignal("mosi", Pins("HPC:LA09_N")),
+        Subsignal("miso", Pins("HPC:LA10_N")),
+        Subsignal("cs_n", Pins("HPC:LA11_N")),
+        IOStandard("LVDS_25")
+     ),
+    ("zotino_ldac", 0,
+        Subsignal("p", Pins("HPC:LA13_P")),
+        Subsignal("n", Pins("HPC:LA13_N")),
+        IOStandard("LVDS_25"), Misc("DIFF_TERM=TRUE")
+     )
+]
 
 class _NIST_Ions(MiniSoC, AMPSoC):
     mem_map = {
@@ -142,6 +163,7 @@ class _NIST_Ions(MiniSoC, AMPSoC):
         self.platform.add_extension(_sma33_io)
         self.platform.add_extension(_ams101_dac)
         self.platform.add_extension(_sdcard_spi_33)
+        self.platform.add_extension(_zotino)
 
         i2c = self.platform.request("i2c")
         self.submodules.i2c = gpio.GPIOTristate([i2c.scl, i2c.sda])
@@ -235,7 +257,21 @@ class NIST_CLOCK(_NIST_Ions):
         phy = spi.SPIMaster(platform.request("sdcard_spi_33", 0))
         self.submodules += phy
         rtio_channels.append(rtio.Channel.from_phy(
-            phy, ififo_depth=4))
+            phy, ofifo_depth=4, ififo_depth=4))
+
+        sdac_phy = spi.SPIMaster(self.platform.request("zotino_spi_p", 0),
+                                 self.platform.request("zotino_spi_n", 0))
+        self.submodules += sdac_phy
+        rtio_channels.append(rtio.Channel.from_phy(sdac_phy, ififo_depth=4))
+
+        pads = platform.request("zotino_ldac")
+        ldac_phy = ttl_serdes_7series.Output_8X(pads.p, pads.n)
+        self.submodules += ldac_phy
+        rtio_channels.append(rtio.Channel.from_phy(ldac_phy))
+
+        dac_monitor = ad5360_monitor.AD5360Monitor(sdac_phy.rtlink, ldac_phy.rtlink)
+        self.submodules += dac_monitor
+        sdac_phy.probes.extend(dac_monitor.probes)
 
         phy = dds.AD9914(platform.request("dds"), 11, onehot=True)
         self.submodules += phy
