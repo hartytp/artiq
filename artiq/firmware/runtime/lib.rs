@@ -22,7 +22,7 @@ extern crate amp;
 extern crate drtioaux;
 
 use std::boxed::Box;
-use smoltcp::wire::{EthernetAddress, IpAddress};
+use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
 use proto::{mgmt_proto, analyzer_proto, moninj_proto, rpc_proto, session_proto, kernel_proto};
 use amp::{mailbox, rpc_queue};
 
@@ -97,7 +97,7 @@ fn startup() {
 
     let protocol_addr;
     match config::read_str("ip", |r| r?.parse()) {
-        Err(()) | Ok(IpAddress::Unspecified) => {
+        Err(()) => {
             protocol_addr = IpAddress::v4(192, 168, 1, 50);
             info!("using default IP address {}", protocol_addr);
         }
@@ -119,7 +119,7 @@ fn startup() {
     let arp_cache  = smoltcp::iface::SliceArpCache::new([Default::default(); 8]);
     let mut interface  = smoltcp::iface::EthernetInterface::new(
         Box::new(net_device), Box::new(arp_cache) as Box<smoltcp::iface::ArpCache>,
-        hardware_addr, [protocol_addr]);
+        hardware_addr, [IpCidr::new(protocol_addr, 0)], None);
 
     let mut scheduler = sched::Scheduler::new();
     let io = scheduler.io();
@@ -153,6 +153,7 @@ fn startup() {
         }
     }
 
+    let mut net_stats = ethmac::EthernetStatistics::new();
     loop {
         scheduler.run();
 
@@ -161,6 +162,10 @@ fn startup() {
             Ok(_poll_at) => (),
             Err(smoltcp::Error::Unrecognized) => (),
             Err(err) => warn!("network error: {}", err)
+        }
+
+        if let Some(net_stats_diff) = net_stats.update() {
+            warn!("ethernet mac:{}", net_stats_diff); // mac:{} (sic)
         }
     }
 }
