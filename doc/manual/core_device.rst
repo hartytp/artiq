@@ -76,6 +76,26 @@ With the CLOCK hardware, the TTL lines are mapped as follows:
 +--------------------+-----------------------+--------------+
 | 31                 | ZOTINO_LDAC           | Output       |
 +--------------------+-----------------------+--------------+
+| 34                 | URUKUL_IO_UPDATE      | Output       |
++--------------------+-----------------------+--------------+
+| 35                 | URUKUL_DDS_RESET      | Output       |
++--------------------+-----------------------+--------------+
+| 36                 | URUKUL_SYNC_CLK       | Output       |
++--------------------+-----------------------+--------------+
+| 37                 | URUKUL_SYNC_IN        | Output       |
++--------------------+-----------------------+--------------+
+| 38                 | URUKUL_IO_UPDATE_RET  | Input        |
++--------------------+-----------------------+--------------+
+| 39                 | URUKUL_NU_MOSI3       | Output       |
++--------------------+-----------------------+--------------+
+| 40                 | URUKUL_SW0            | Output       |
++--------------------+-----------------------+--------------+
+| 41                 | URUKUL_SW1            | Output       |
++--------------------+-----------------------+--------------+
+| 42                 | URUKUL_SW2            | Output       |
++--------------------+-----------------------+--------------+
+| 43                 | URUKUL_SW3            | Output       |
++--------------------+-----------------------+--------------+
 
 The board has RTIO SPI buses mapped as follows:
 
@@ -93,6 +113,10 @@ The board has RTIO SPI buses mapped as follows:
 | 26           | MMC_SPI_CS_N | MMC_SPI_MOSI | MMC_SPI_MISO | MMC_SPI_CLK|
 +--------------+--------------+--------------+--------------+------------+
 | 30           | ZOTINO_CS_N  | ZOTINO_MOSI  | ZOTINO_MISO  | ZOTINO_CLK |
++--------------+--------------+--------------+--------------+------------+
+| 33           | URUKUL_CS0   | URUKUL_MOSI  | URUKUL_MISO  | URUKUL_CLK |  Note: via FMC DIO VLDS32 -> VHCI Breakout ("upper 2 channels")
+|              | URUKUL_CS1   |              |              |            |
+|              | URUKUL_CS2   |              |              |            |
 +--------------+--------------+--------------+--------------+------------+
 
 The DDS bus is on channel 32.

@@ -112,7 +112,7 @@ _zotino = [
         Subsignal("clk", Pins("HPC:LA32_N")),
         Subsignal("ser", Pins("HPC:LA33_P")),
         Subsignal("latch", Pins("HPC:LA32_P")),
-        IOStandard("LVCMOS33")
+        IOStandard("LVCMOS25")
     ),
     ("zotino_spi_p", 0,
         Subsignal("clk", Pins("HPC:LA08_P")),
@@ -131,6 +131,74 @@ _zotino = [
     ("zotino_ldac", 0,
         Subsignal("p", Pins("HPC:LA13_P")),
         Subsignal("n", Pins("HPC:LA13_N")),
+        IOStandard("LVDS_25"), Misc("DIFF_TERM=TRUE")
+    )
+]
+
+_urukul = [
+    ("urukul_spi_p", 0,
+        Subsignal("clk", Pins("HPC:LA17_CC_P")), #VHCI LVDS3_1
+        Subsignal("mosi", Pins("HPC:LA16_P")), #VHCI LVDS3_2
+        Subsignal("miso", Pins("HPC:LA24_P")), #VHCI LVDS3_3
+        Subsignal("cs_n", Pins("HPC:LA19_P HPC:LA20_P HPC:LA21_P")),  #VHCI LVDS3_4, 5, 6
+        IOStandard("LVDS_25"), Misc("DIFF_TERM=TRUE")
+    ),
+    ("urukul_spi_n", 0,
+        Subsignal("clk", Pins("HPC:LA17_CC_N")),
+        Subsignal("mosi", Pins("HPC:LA16_N")),
+        Subsignal("miso", Pins("HPC:LA24_N")),
+        Subsignal("cs_n", Pins("HPC:LA19_N HPC:LA20_N HPC:LA21_N")),
+        IOStandard("LVDS_25"), Misc("DIFF_TERM=TRUE")
+    ),
+
+    ("urukul_io_update", 0, #VHCI LVDS3_7
+        Subsignal("p", Pins("HPC:LA22_P")),
+        Subsignal("n", Pins("HPC:LA22_N")),
+        IOStandard("LVDS_25"), Misc("DIFF_TERM=TRUE")
+    ),
+    ("urukul_dds_reset", 0, #VHCI LVDS3_8
+        Subsignal("p", Pins("HPC:LA23_P")),
+        Subsignal("n", Pins("HPC:LA23_N")),
+        IOStandard("LVDS_25"), Misc("DIFF_TERM=TRUE")
+    ),
+    ("urukul_sync_clk", 0, #VHCI LVDS4_1
+        Subsignal("p", Pins("HPC:LA18_CC_P")),
+        Subsignal("n", Pins("HPC:LA18_CC_N")),
+        IOStandard("LVDS_25"), Misc("DIFF_TERM=TRUE")
+    ),
+    ("urukul_sync_in", 0, #VHCI LVDS4_2
+        Subsignal("p", Pins("HPC:LA25_P")),
+        Subsignal("n", Pins("HPC:LA25_N")),
+        IOStandard("LVDS_25"), Misc("DIFF_TERM=TRUE")
+    ),
+    ("urukul_io_update_ret", 0, #VHCI LVDS4_3
+        Subsignal("p", Pins("HPC:LA26_P")),
+        Subsignal("n", Pins("HPC:LA26_N")),
+        IOStandard("LVDS_25"), Misc("DIFF_TERM=TRUE")
+    ),
+    ("urukul_nu_mosi3", 0, #VHCI LVDS4_4
+        Subsignal("p", Pins("HPC:LA27_P")),
+        Subsignal("n", Pins("HPC:LA27_N")),
+        IOStandard("LVDS_25"), Misc("DIFF_TERM=TRUE")
+    ),
+    ("urukul_sw0", 0, #VHCI LVDS4_5
+        Subsignal("p", Pins("HPC:LA28_P")),
+        Subsignal("n", Pins("HPC:LA28_N")),
+        IOStandard("LVDS_25"), Misc("DIFF_TERM=TRUE")
+    ),
+    ("urukul_sw1", 0, #VHCI LVDS4_6
+        Subsignal("p", Pins("HPC:LA29_P")),
+        Subsignal("n", Pins("HPC:LA29_N")),
+        IOStandard("LVDS_25"), Misc("DIFF_TERM=TRUE")
+    ),
+    ("urukul_sw2", 0, #VHCI LVDS4_7
+        Subsignal("p", Pins("HPC:LA30_P")),
+        Subsignal("n", Pins("HPC:LA30_N")),
+        IOStandard("LVDS_25"), Misc("DIFF_TERM=TRUE")
+    ),
+    ("urukul_sw3", 0, #VHCI LVDS4_8
+        Subsignal("p", Pins("HPC:LA31_P")),
+        Subsignal("n", Pins("HPC:LA31_N")),
         IOStandard("LVDS_25"), Misc("DIFF_TERM=TRUE")
     )
 ]
@@ -170,6 +238,7 @@ class _NIST_Ions(MiniSoC, AMPSoC):
         self.platform.add_extension(_ams101_dac)
         self.platform.add_extension(_sdcard_spi_33)
         self.platform.add_extension(_zotino)
+        self.platform.add_extension(_urukul)
 
         i2c = self.platform.request("i2c")
         self.submodules.i2c = gpio.GPIOTristate([i2c.scl, i2c.sda])
@@ -290,6 +359,61 @@ class NIST_CLOCK(_NIST_Ions):
         rtio_channels.append(rtio.Channel.from_phy(phy,
                                                    ofifo_depth=512,
                                                    ififo_depth=4))
+
+        sdac_phy = spi.SPIMaster(self.platform.request("urukul_spi_p"),
+                                 self.platform.request("urukul_spi_n"))
+        self.submodules += sdac_phy
+        rtio_channels.append(rtio.Channel.from_phy(sdac_phy, ififo_depth=4))
+
+        urukul_io_update_pads = platform.request("urukul_io_update")
+        urukul_io_update = ttl_serdes_7series.Output_8X(urukul_io_update_pads.p, urukul_io_update_pads.n)
+        self.submodules += urukul_io_update
+        rtio_channels.append(rtio.Channel.from_phy(urukul_io_update))
+
+        urukul_dds_reset_pads = platform.request("urukul_dds_reset")
+        urukul_dds_reset = ttl_serdes_7series.Output_8X(urukul_dds_reset_pads.p, urukul_dds_reset_pads.n)
+        self.submodules += urukul_dds_reset
+        rtio_channels.append(rtio.Channel.from_phy(urukul_dds_reset))
+
+        urukul_sync_clk_pads = platform.request("urukul_sync_clk")
+        urukul_sync_clk = ttl_serdes_7series.Output_8X(urukul_sync_clk_pads.p, urukul_sync_clk_pads.n)
+        self.submodules += urukul_sync_clk
+        rtio_channels.append(rtio.Channel.from_phy(urukul_sync_clk))
+
+        urukul_sync_in_pads = platform.request("urukul_sync_in")
+        urukul_sync_in = ttl_serdes_7series.Output_8X(urukul_sync_in_pads.p, urukul_sync_in_pads.n)
+        self.submodules += urukul_sync_in
+        rtio_channels.append(rtio.Channel.from_phy(urukul_sync_in))
+
+        urukul_io_update_ret_pads = platform.request("urukul_io_update_ret")
+        urukul_io_update_ret = ttl_serdes_7series.InOut_8X(urukul_io_update_ret_pads.p, urukul_io_update_ret_pads.n)
+        self.submodules += urukul_io_update_ret
+        rtio_channels.append(rtio.Channel.from_phy(urukul_io_update_ret, ififo_depth=512))
+
+        urukul_nu_mosi3_pads = platform.request("urukul_nu_mosi3")
+        urukul_nu_mosi3 = ttl_serdes_7series.Output_8X(urukul_nu_mosi3_pads.p, urukul_nu_mosi3_pads.n)
+        self.submodules += urukul_nu_mosi3
+        rtio_channels.append(rtio.Channel.from_phy(urukul_nu_mosi3))
+
+        urukul_sw0_pads = platform.request("urukul_sw0")
+        urukul_sw0 = ttl_serdes_7series.Output_8X(urukul_sw0_pads.p, urukul_sw0_pads.n)
+        self.submodules += urukul_sw0
+        rtio_channels.append(rtio.Channel.from_phy(urukul_sw0))
+
+        urukul_sw1_pads = platform.request("urukul_sw1")
+        urukul_sw1 = ttl_serdes_7series.Output_8X(urukul_sw1_pads.p, urukul_sw1_pads.n)
+        self.submodules += urukul_sw1
+        rtio_channels.append(rtio.Channel.from_phy(urukul_sw1))
+
+        urukul_sw2_pads = platform.request("urukul_sw2")
+        urukul_sw2 = ttl_serdes_7series.Output_8X(urukul_sw2_pads.p, urukul_sw2_pads.n)
+        self.submodules += urukul_sw2
+        rtio_channels.append(rtio.Channel.from_phy(urukul_sw2))
+
+        urukul_sw3_pads = platform.request("urukul_sw3")
+        urukul_sw3 = ttl_serdes_7series.Output_8X(urukul_sw3_pads.p, urukul_sw3_pads.n)
+        self.submodules += urukul_sw3
+        rtio_channels.append(rtio.Channel.from_phy(urukul_sw3))
 
         self.config["HAS_RTIO_LOG"] = None
         self.config["RTIO_LOG_CHANNEL"] = len(rtio_channels)

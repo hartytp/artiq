@@ -146,6 +146,7 @@ class SPIMaster(Module):
         cs = Signal.like(xfer.cs)
         data_read = Signal.like(spi.reg.data)
         data_write = Signal.like(spi.reg.data)
+        cs_delayed = Signal()
 
         self.comb += [
             spi.start.eq(pending & (~spi.cs | spi.done)),
@@ -203,7 +204,7 @@ class SPIMaster(Module):
             mosi_oe.eq(
                 ~config.offline & spi.cs &
                 (spi.oe | ~config.half_duplex)),
-            clk.eq((spi.cg.clk & spi.cs) ^ config.clk_polarity)
+            clk.eq((spi.cg.clk & spi.cs & ~spi.bits.done) ^ config.clk_polarity)
         ]
 
         if pads_n is None:
@@ -212,8 +213,7 @@ class SPIMaster(Module):
                 self.specials += cs_n_t.get_tristate(pads.cs_n)
                 self.comb += [
                     cs_n_t.oe.eq(~config.offline),
-                    cs_n_t.o.eq((cs & Replicate(spi.cs, len(cs))) ^
-                                Replicate(~config.cs_polarity, len(cs))),
+                    cs_n_t.o.eq(cs & Replicate(spi.cs ^ ~config.cs_polarity, len(cs))),
                 ]
 
             clk_t = TSTriple()

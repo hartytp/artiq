@@ -2,7 +2,7 @@
 # The RTIO channel numbers here are for NIST CLOCK on KC705.
 # The list of devices here is not exhaustive.
 
-core_addr = "kc705.lab.m-labs.hk"
+core_addr = "10.0.16.7"
 
 device_db = {
     # Core device
@@ -212,6 +212,73 @@ device_db = {
         "arguments": {"bus_channel": 32, "channel": 2}
     },
 
+    #URUKUL
+    "spi_urukul": {
+        "type": "local",
+        "module": "artiq.coredevice.spi",
+        "class": "SPIMaster",
+        "arguments": {"channel": 33}
+    },
+    "urukul_io_update": {
+        "type": "local",
+        "module": "artiq.coredevice.ttl",
+        "class": "TTLOut",
+        "arguments": {"channel": 34}
+    },
+    "urukul_dds_reset": {
+        "type": "local",
+        "module": "artiq.coredevice.ttl",
+        "class": "TTLOut",
+        "arguments": {"channel": 35}
+    },
+    "urukul_sync_clk": {
+        "type": "local",
+        "module": "artiq.coredevice.ttl",
+        "class": "TTLOut",
+        "arguments": {"channel": 36}
+    },
+    "urukul_sync_in": {
+        "type": "local",
+        "module": "artiq.coredevice.ttl",
+        "class": "TTLOut",
+        "arguments": {"channel": 37}
+    },
+    "urukul_io_update_ret": {
+        "type": "local",
+        "module": "artiq.coredevice.ttl",
+        "class": "TTLInOut",
+        "arguments": {"channel": 38}
+    },
+    "urukul_nu_mosi3": {
+        "type": "local",
+        "module": "artiq.coredevice.ttl",
+        "class": "TTLOut",
+        "arguments": {"channel": 39}
+    },
+    "urukul_sw0": {
+        "type": "local",
+        "module": "artiq.coredevice.ttl",
+        "class": "TTLOut",
+        "arguments": {"channel": 40}
+    },
+    "urukul_sw1": {
+        "type": "local",
+        "module": "artiq.coredevice.ttl",
+        "class": "TTLOut",
+        "arguments": {"channel": 41}
+    },
+    "urukul_sw2": {
+        "type": "local",
+        "module": "artiq.coredevice.ttl",
+        "class": "TTLOut",
+        "arguments": {"channel": 42}
+    },
+    "urukul_sw3": {
+        "type": "local",
+        "module": "artiq.coredevice.ttl",
+        "class": "TTLOut",
+        "arguments": {"channel": 43}
+    },
     # Controllers
     "lda": {
         "type": "controller",
