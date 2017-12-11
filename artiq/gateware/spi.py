@@ -147,6 +147,7 @@ class SPIMaster(Module):
         data_read = Signal.like(spi.reg.data)
         data_write = Signal.like(spi.reg.data)
         cs_delayed = Signal()
+        done_delayed = Signal()
 
         self.comb += [
             spi.start.eq(pending & (~spi.cs | spi.done)),
@@ -195,6 +196,11 @@ class SPIMaster(Module):
             ),
             config.active.eq(spi.cs),
             config.pending.eq(pending),
+            If(spi.bits.done,
+                If(spi.cg.edge, done_delayed.eq(1)),
+            ).Else(
+                done_delayed.eq(0),
+            ),
         ]
 
         # I/O
@@ -204,7 +210,7 @@ class SPIMaster(Module):
             mosi_oe.eq(
                 ~config.offline & spi.cs &
                 (spi.oe | ~config.half_duplex)),
-            clk.eq((spi.cg.clk & spi.cs & ~spi.bits.done) ^ config.clk_polarity)
+            clk.eq((spi.cg.clk & spi.cs & ~done_delayed) ^ config.clk_polarity)
         ]
 
         if pads_n is None:
