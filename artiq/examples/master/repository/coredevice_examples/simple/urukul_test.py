@@ -1,60 +1,60 @@
-from artiq.experiment import *
-from artiq.coredevice import spi
+#experiment for the Urukul AD9910 analog performance testing
 
-_URUKUL_SPI_CONFIG = (0*spi.SPI_OFFLINE | 1*spi.SPI_CS_POLARITY |   #SPI CS inverted for compatibility with URUKUL register select logic
-                      0*spi.SPI_CLK_POLARITY | 1*spi.SPI_CLK_PHASE |
-                      0*spi.SPI_LSB_FIRST | 0*spi.SPI_HALF_DUPLEX)
+from artiq.experiment import *
+import numpy
 
 class URUKULTest(EnvExperiment):
+
     def build(self):
         self.setattr_device("core")
         self.setattr_device("fmcdio_dirctl")
+        self.setattr_device("dds_urukul")
+        self.setattr_device("dds_ad9910_0")
+        self.setattr_device("dds_ad9910_1")
+        self.setattr_device("dds_ad9910_2")
+        self.setattr_device("dds_ad9910_3")
         self.setattr_device("led")
-        self.setattr_device("spi_urukul")
-        self.setattr_device("urukul_io_update")
-        self.setattr_device("urukul_dds_reset")
-        self.setattr_device("urukul_sync_clk")
-        self.setattr_device("urukul_sync_in")
-        self.setattr_device("urukul_io_update_ret")
-        self.setattr_device("urukul_nu_mosi3")
-        self.setattr_device("urukul_sw0")
-        self.setattr_device("urukul_sw1")
-        self.setattr_device("urukul_sw2")
-        self.setattr_device("urukul_sw3")
+
+    def p(self, f, *a):
+        print(f % a)
 
     @kernel
     def run(self):
         self.core.reset()
-#        self.urukul_io_update_ret.output()
-        delay(10*ms)  # build slack for shift register set
-        self.fmcdio_dirctl.set(0x0A008800) # added urukul MISO (LVDS pair 2) and urukul_io_update_ret (LVDS pair 10)
+        delay(5*ms)  # build slack for shift register set
+        self.fmcdio_dirctl.set(0x0A008800) # added urukul MISO
+            # (LVDS pair 2) and urukul_io_update_ret (LVDS pair 10)
         self.led.on()
-        while True:
-            self.led.pulse(50*ms)
+        delay(5*ms)
+        self.led.off()
 
-            #basic SPI test
-            self.spi_urukul.set_config_mu(_URUKUL_SPI_CONFIG, 30, 40)
-            self.spi_urukul.set_xfer(7, 24, 0)
-            self.spi_urukul.write(0xAAAAAAAA)
+        self.dds_urukul.init()
+        self.dds_ad9910_0.init()
+        self.dds_ad9910_1.init()
+        self.dds_ad9910_2.init()
+        self.dds_ad9910_3.init()
+       
+        delay(10*ms)
 
-            #basic outputs test
-            self.urukul_io_update.pulse(1*ms)
-            delay(1*ms)
-            self.urukul_dds_reset.pulse(2*ms)
-            delay(1*ms)
-            self.urukul_sync_clk.pulse(3*ms)
-            delay(1*ms)
-            self.urukul_sync_in.pulse(4*ms)
-            delay(1*ms)
-#            self.urukul_io_update_ret.pulse(5*ms)
-#            delay(1*ms)
-            self.urukul_nu_mosi3.pulse(6*ms)
-            delay(1*ms)
-            self.urukul_sw0.pulse(7*ms)
-            delay(1*ms)
-            self.urukul_sw1.pulse(8*ms)
-            delay(1*ms)
-            self.urukul_sw2.pulse(9*ms)
-            delay(1*ms)
-            self.urukul_sw3.pulse(10*ms)
-            delay(1*ms)
+        self.dds_ad9910_0.set(10*MHz+0.2*Hz, 0.0, 0.5)
+        self.dds_ad9910_0.set_att(20)
+        self.dds_ad9910_0.on()
+
+        self.dds_ad9910_1.set(10*MHz, 0.0, 0.5)
+        self.dds_ad9910_1.set_att(20)
+        self.dds_ad9910_1.on()
+
+        self.dds_ad9910_2.set(10*MHz)
+        self.dds_ad9910_2.set_att(20)
+        self.dds_ad9910_2.on()
+
+        self.dds_ad9910_3.set(10*MHz, 0.0, 0.3)
+        self.dds_ad9910_3.set_att(20)
+        self.dds_ad9910_3.on()
+
+        self.led.pulse(10*ms)
+
+        while False:                          # enable for the interference tests      
+            delay(100*ns) #dummy
+#            self.dds_urukul.test_dds_noise() # uncomment for the interference test for the ATT SPI
+#            self.dds_urukul.test_att_noise() # uncomment for the interference test for the DDS3 SPI

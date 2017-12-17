@@ -279,6 +279,53 @@ device_db = {
         "class": "TTLOut",
         "arguments": {"channel": 43}
     },
+    "dds_urukul": {
+        "type": "local",
+        "module": "artiq.coredevice.dds_urukul",
+        "class": "DDSGroupUrukul",
+        "arguments": {
+            "sysclk": 1e9,
+            "ref_clk": 12500000,
+            "clk_sel": 1,
+            "dds_channel_count": 4,
+            "spi_device": "spi_urukul",
+            "io_update_device": "urukul_io_update",
+            "dds_reset_device": "urukul_dds_reset",
+            "sync_clk_device": "urukul_sync_clk",
+            "sync_in_device": "urukul_sync_in",
+            "io_update_ret_device": "urukul_io_update_ret",
+            "nu_mosi3_device": "urukul_nu_mosi3",
+            "sw0_device": "urukul_sw0",
+            "sw1_device": "urukul_sw1",
+            "sw2_device": "urukul_sw2",
+            "sw3_device": "urukul_sw3",
+        }
+    },
+    "dds_ad9910_0": {
+        "type": "local",
+        "module": "artiq.coredevice.dds_urukul",
+        "class": "DDSChannelAD9910",
+        "arguments": {"channel": 0, "pll_n": 80, "pll_cp": 7},
+    },
+    "dds_ad9910_1": {
+        "type": "local",
+        "module": "artiq.coredevice.dds_urukul",
+        "class": "DDSChannelAD9910",
+        "arguments": {"channel": 1, "pll_n": 80, "pll_cp": 7},
+    },
+    "dds_ad9910_2": {
+        "type": "local",
+        "module": "artiq.coredevice.dds_urukul",
+        "class": "DDSChannelAD9910",
+        "arguments": {"channel": 2, "pll_n": 80, "pll_cp": 7},
+    },
+    "dds_ad9910_3": {
+        "type": "local",
+        "module": "artiq.coredevice.dds_urukul",
+        "class": "DDSChannelAD9910",
+        "arguments": {"channel": 3, "pll_n": 80, "pll_cp": 7},
+    },
+
     # Controllers
     "lda": {
         "type": "controller",
