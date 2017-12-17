@@ -196,11 +196,6 @@ class SPIMaster(Module):
             ),
             config.active.eq(spi.cs),
             config.pending.eq(pending),
-            If(spi.bits.done,
-                If(spi.cg.edge, done_delayed.eq(1)),
-            ).Else(
-                done_delayed.eq(0),
-            ),
         ]
 
         # I/O
@@ -210,7 +205,9 @@ class SPIMaster(Module):
             mosi_oe.eq(
                 ~config.offline & spi.cs &
                 (spi.oe | ~config.half_duplex)),
-            clk.eq((spi.cg.clk & spi.cs & ~done_delayed) ^ config.clk_polarity)
+        ]
+        self.sync += [
+            clk.eq((spi.cg.clk & spi.cs) ^ config.clk_polarity)
         ]
 
         if pads_n is None:
