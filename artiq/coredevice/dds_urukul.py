@@ -4,12 +4,15 @@ Drivers for direct digital synthesis (DDS) AD9910(Urukul) on RTIO.
 Output event replacement is not supported and issuing commands at the same
 time is an error.
 
-Note: only basic set of the functions inplemented and tested: 
+Only the basic set of the functions inplemented and tested: 
 CPLD configuration
-CPLD status
-AD9910 initiallization and profile 0 single tone
+CPLD status check
+AD9910 initiallization and profile 0 (single tone)
 Attenuator control
-SW control (EMM1 needed)
+SW control (EMM1 must be connected)
+
+Note: current code version can't work with the accurate update timing and
+the DDS synchroniztaion. The SPI gateware need to be fixed 1st.
 """
 
 
@@ -138,7 +141,6 @@ class BatchContextManager:
                                   param.pow, param.amplitude)
 
 
-
 class DDSGroupUrukul:
     """Driver for AD9910 DDS chips. See ``DDSGroup`` for a description
     of the functionality."""
@@ -197,12 +199,11 @@ class DDSGroupUrukul:
         self.rtio_period_mu        = int64(8)
         self.sysclk_per_mu         = int32(self.sysclk * self.core.ref_period)
 
-        self.write_duration_mu     = 5 * self.rtio_period_mu #TBD
-        self.dac_cal_duration_mu   = 147000 * self.rtio_period_mu #TBD
-        self.init_duration_mu      = 1000*self.rtio_period_mu #TBD
-                                        #8 * self.write_duration_mu + self.dac_cal_duration_mu
-        self.init_sync_duration_mu = 16 * self.write_duration_mu + 2 * self.dac_cal_duration_mu #TBD
-        self.program_duration_mu   = 6 * self.write_duration_mu #TBD
+        self.write_duration_mu     = 5 * self.rtio_period_mu  #optimize SPI clk and adjust
+        self.dac_cal_duration_mu   = 147000 * self.rtio_period_mu  #optimize SPI clk and adjust
+        self.init_duration_mu      = 1000*self.rtio_period_mu #optimize SPI clk and adjust
+        self.init_sync_duration_mu = 16 * self.write_duration_mu + 2 * self.dac_cal_duration_mu #optimize SPI clk and adjust
+        self.program_duration_mu   = 6 * self.write_duration_mu #optimize SPI clk and adjust
 
         self.cpld_config_reg = numpy.int32(0)
         self.att_reg = numpy.int32(0)
@@ -211,7 +212,6 @@ class DDSGroupUrukul:
 
     @kernel
     def write_cfg(self):
-#        delay_mu(-self.write_cfg_duration_mu)
         self.bus.set_config_mu(_SPI_CONFIG,
                                _SPIT_CFG_WR, _SPIT_STATUS_RD)
         self.bus.set_xfer(_CS_CFG, 24, 0)
@@ -219,18 +219,16 @@ class DDSGroupUrukul:
 
     @kernel
     def read_status(self):
-#        delay_mu(-self.read_status_duration_mu)
         self.bus.set_config_mu(_SPI_CONFIG,
                                _SPIT_STATUS_RD, _SPIT_STATUS_RD)
         self.bus.set_xfer(_CS_CFG, 24, 0)
         self.bus.write(self.cpld_config_reg << 8)
         self.bus.read_async()
-        delay(20*us) #optimize SPI clk and define
+        delay(20*us) #not optimized
         return self.bus.input_async()
 
     @kernel
     def init(self):
-#        delay_mu(-self.init_duration_mu)
         delay(10*ms)
         self.cpld_config_reg = (_CFG_RST
                 | (_CFG_CLK_SEL if self.clk_sel == 1 else 0))
@@ -241,7 +239,7 @@ class DDSGroupUrukul:
         self.proto_rev = ((self.status_reg >> _STA_PROTO_REV_OFS)
                 & _STA_PROTO_REV_MASK)
         if self.proto_rev != _STA_PROTO_REV_MATCH:
-            raise DDSError('unexpected proto_rev')
+            raise DDSError("Unexpected proto_rev")
 
     @kernel
     def rf_sw(self, sw, bit):
@@ -254,10 +252,10 @@ class DDSGroupUrukul:
     def io_rst(self):
         self.cpld_config_reg |= _CFG_IO_RST
         self.write_cfg()
-        delay(1*us) #TBD
+        delay(1*us) #optimize SPI clk and adjust
         self.cpld_config_reg &= ~_CFG_IO_RST;
         self.write_cfg()
-        delay(1*us) #TBD
+        delay(1*us) #optimize SPI clk and adjust
 
     @kernel
     def write_dds_reg(self, dds, reg, data, data2=0):
@@ -267,13 +265,12 @@ class DDSGroupUrukul:
         and the required CS high time.
         """
         if dds >= 4 or reg > 31:
-            raise ValueError('DDS register out of range')
+            raise ValueError("DDS register out of range")
 
-#        self.io_rst() #
         self.bus.set_config_mu(_SPI_CONFIG,
                 _SPIT_DDS_WR, _SPIT_DDS_WR)
         self.bus.set_xfer(4 + dds, 8, 0)
-        self.bus.write(reg << 24)   # write mode
+        self.bus.write(reg << 24)
         self.bus.set_xfer(4 + dds, 32, 0)
         if reg >= 0x0E:
             self.bus.write(data)
@@ -285,37 +282,37 @@ class DDSGroupUrukul:
     @kernel
     def read_dds_reg(self, dds, reg):
         if dds >= 4 or reg > 31:
-            raise ValueError('DDS register out of range')
+            raise ValueError("DDS register out of range")
 
         self.io_rst()
         self.bus.set_config_mu(_SPI_CONFIG,
                 _SPIT_DDS_WR, _SPIT_DDS_WR)
         self.bus.set_xfer(4 + dds, 8, 0)
         self.bus.write((0x80 | reg) << 24)
-        delay_mu(200*self.bus.ref_period_mu)  # get to 20ns min cs high
+        delay_mu(200*self.bus.ref_period_mu)  #optimize SPI clk and adjust
         self.bus.set_config_mu(_SPI_CONFIG,
                 _SPIT_DDS_RD, _SPIT_DDS_RD)
         self.bus.set_xfer(4 + dds, 0, 32)
         self.bus.write(0)
-        delay_mu(self.bus.ref_period_mu)  # get to 20ns min cs high
+        delay_mu(self.bus.ref_period_mu)  #optimize SPI clk and adjust
         self.bus.read_async()
         return self.bus.input_async()
 
     @kernel
     def dds_init(self, dds, pll_n, pll_cp):
         if dds >= 4:
-             raise ValueError('DDS register out of range')
+             raise ValueError("DDS register out of range")
         self.write_dds_reg(dds, _AD9910_REG_CFR1, 0x00000002)
         reg3 = self.read_dds_reg(dds, 3)
-        delay(1*ms) #TBD
+        delay(1*ms) #optimize SPI clk and adjust
         if reg3 != 0x7f7f:
-            raise DDSError('AD9910 not detected')
+            raise DDSError("AD9910 not detected")
         self.write_dds_reg(dds, _AD9910_REG_CFR2, 0x00400820 | (1 << 24))
         pll_freq = self.ref_clk * pll_n
         if pll_freq < 420000000:
-            raise ValueError('pll_n is too low')
+            raise ValueError("pll_n is too low")
         if pll_freq > 1000000000 or pll_n >= 127:
-            raise ValueError('pll_n is too high')
+            raise ValueError("pll_n is too high")
         if pll_freq > 920000000:
             pll_vco_sel = 5
         elif pll_freq > 832000000:
@@ -329,21 +326,20 @@ class DDSGroupUrukul:
         else: 
             pll_vco_sel = 0
         if pll_cp > 7:
-            raise ValueError('pll_cp is too high')
+            raise ValueError("pll_cp is too high")
         self.write_dds_reg(dds, _AD9910_REG_CFR3, (0x01 << 28) |
                 (1 << 27) | (pll_vco_sel << 24) | (pll_cp << 19) |
                 (7 << 16) | (1 << 14) | (1 << 8) | (pll_n << 1))
-        delay(10*ms) #PLL lock, TBD
+        delay(10*ms) #PLL lock, need to set more accurate or do the polling
         self.write_cfg() #to latch the actual value
         if (self.read_status() & (1 << (8 + dds))) == 0:
-            raise DDSError('PLL lock fail')
+            raise DDSError("PLL lock fail")
         return pll_freq
-
 
     @kernel
     def set_att(self, dds, att):
         if dds >= 4 or att > 63:
-             raise ValueError('ATT settings out of range')
+             raise ValueError("ATT settings out of range")
 
         self.att_reg &= ~(0x3F << ((dds << 3) + 2))
         self.att_reg |= att << ((dds << 3) + 2)
@@ -351,17 +347,17 @@ class DDSGroupUrukul:
                 _SPIT_ATT_WR, _SPIT_ATT_WR)
         self.bus.set_xfer(_CS_ATT, 32, 0)
         self.bus.write(self.att_reg)
-        delay(1*us) #TBD
+        delay(1*us) #optimize SPI clk and adjust
         self.cpld_config_reg |= _CFG_LE
         self.write_cfg()
-        delay(100*ns) #TBD
+        delay(100*ns) #optimize SPI clk and adjust
         self.cpld_config_reg &= ~_CFG_LE;
         self.write_cfg()
 
     @kernel
     def test_att_noise(self):
         for i in range(0, 1024):
-            delay(5*us) #TBD
+            delay(5*us) #optimize SPI clk and adjust
             self.bus.set_config_mu(_SPI_CONFIG,
                     _SPIT_ATT_WR, _SPIT_ATT_WR)
             self.bus.set_xfer(_CS_ATT, 32, 0)
@@ -370,16 +366,11 @@ class DDSGroupUrukul:
     @kernel
     def test_dds_noise(self):
         for i in range(0, 1024):
-            delay(2*us) #TBD
+            delay(2*us) #optimize SPI clk and adjust
             self.write_dds_reg(3, _AD9910_REG_PR7, 0, 0) 
 
     @kernel
     def set(self, channel, ftw, pow, phase_mode, amplitude):
-#        if self.batch.active:
-#            self.batch.append(channel, ftw, pow, amplitude)
-#        else:
-#            ref_time = now_mu()
-#            at_mu(ref_time - self.program_duration_mu)
         ref_time = 0
         self.program(ref_time,
                      channel, ftw, pow, amplitude)
@@ -429,12 +420,12 @@ class DDSGroupUrukul:
     @kernel
     def program(self, ref_time, channel, ftw, pow, amplitude):
         if amplitude >= 0x3FFF:
-             raise ValueError('amplitude is out of range')
+             raise ValueError("Amplitude is out of range")
         if pow > 0xFFFF:
-             raise ValueError('pow is out of range')
+             raise ValueError("pow is out of range")
         self.write_dds_reg(channel,
                 _AD9910_REG_PR0, (amplitude << 16) | pow, ftw
-            ) #pr0
+            ) #need to add the profiles 1-7 setup
 
 
 class DDSChannelAD9910:
@@ -522,4 +513,3 @@ class DDSChannelAD9910:
         self.set_mu(self.dds_urukul.frequency_to_ftw(frequency),
                     self.dds_urukul.turns_to_pow(phase),
                     self.dds_urukul.amplitude_to_asf(amplitude))
-
