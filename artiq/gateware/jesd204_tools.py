@@ -15,8 +15,8 @@ from jesd204b.core import JESD204BCoreTXControl
 
 
 class UltrascaleCRG(Module, AutoCSR):
-    linerate = int(6e9)
-    refclk_freq = int(150e6)
+    linerate = int(10e9)  # linerate = 20*data_rate*4/8 = data_rate*10
+    refclk_freq = int(125e6)
     fabric_freq = int(125e6)
 
     def __init__(self, platform, use_rtio_clock=False):
