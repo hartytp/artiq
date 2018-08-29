@@ -31,7 +31,7 @@ class AD9154(Module, AutoCSR):
         self.submodules.jesd = jesd204_tools.UltrascaleTX(
             platform, sys_crg, jesd_crg, dac)
 
-        self.sawgs = [sawg.Channel(width=16, parallelism=4) for i in range(4)]
+        self.sawgs = [sawg.Channel(width=16, parallelism=8) for i in range(4)]
         self.submodules += self.sawgs
 
         for conv, ch in zip(self.jesd.core.sink.flatten(), self.sawgs):
