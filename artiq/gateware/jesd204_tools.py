@@ -86,7 +86,7 @@ class UltrascaleTX(Module, AutoCSR):
             phys.append(phy)
 
         self.submodules.core = JESD204BCoreTX(
-            phys, settings, converter_data_width=64)
+            phys, settings, converter_data_width=128)
         self.submodules.control = JESD204BCoreTXControl(self.core)
         self.core.register_jsync(platform.request("dac_sync", dac))
         self.core.register_jref(jesd_crg.jref)
