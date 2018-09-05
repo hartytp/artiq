@@ -1,6 +1,37 @@
 from migen import *
+from migen.util.misc import flat_iteration
 
 from artiq.gateware.rtio import rtlink
+
+
+class RTServoMonitor(Module):
+    def __init__(self, w, servo):
+        self.probes = []
+        self.probes += [channel.clip for channel in servo.iir.ctrl]
+
+        assert 2**w.channel == 8
+        assert 2**w.profile == 32
+
+        y0 = Array(Array(Signal(w.asf, reset_less=True)
+                         for __ in range(2**w.profile))
+                   for _ in range(2**w.channel))
+
+        for profile_y0 in flat_iteration(y0):
+                self.probes.append(profile_y0)
+
+        m_state = servo.iir.m_state.get_port(write_capable=False,
+                                             clock_domain="rio")
+        self.specials += m_state
+
+        update_ctr = Signal(w.channel + w.profile, reset_less=True)
+        profile = Signal(w.profile)
+        channel = Signal(w.channel)
+        self.sync += update_ctr.eq(update_ctr+1)
+        self.comb += [profile.eq(update_ctr[:w.profile]),
+                      channel.eq(update_ctr[w.profile:]),
+                      m_state.adr.eq(Cat(profile, channel))]
+        self.sync += y0[channel][profile].eq(
+            m_state.dat_r[w.state - w.asf - 1:w.state - 1])
 
 
 class RTServoCtrl(Module):

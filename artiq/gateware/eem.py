@@ -510,6 +510,9 @@ class SUServo(_EEM):
         target.submodules += mem
         target.rtio_channels.append(rtio.Channel.from_phy(mem, ififo_depth=4))
 
+        monitor = rtservo.RTServoMonitor(iir_p, su)
+        target.submodules += monitor
+
         phy = spi2.SPIMaster(
             target.platform.request("{}_pgia_spi_p".format(eem_sampler)),
             target.platform.request("{}_pgia_spi_n".format(eem_sampler)))
