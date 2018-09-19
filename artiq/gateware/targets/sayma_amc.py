@@ -26,7 +26,7 @@ from artiq.gateware.drtio import DRTIOMaster, DRTIOSatellite
 from artiq.build_soc import *
 
 
-class AD9154(Module, AutoCSR):
+class AD9154(Module):
     def __init__(self, platform, jesd, dac):
 
         self.sawgs = [sawg.Channel(width=16, parallelism=8) for i in range(4)]
@@ -37,7 +37,7 @@ class AD9154(Module, AutoCSR):
             self.sync.jesd += conv.eq(Cat(ch.o))
 
 
-class AD9154NoSAWG(Module, AutoCSR):
+class AD9154NoSAWG(Module):
     def __init__(self, platform, jesd, dac):
 
         self.sawgs = []
@@ -188,11 +188,11 @@ class Standalone(MiniSoC, AMPSoC, RTMCommon):
         self.submodules.ad9154_0 = cls(platform, self.jesd_0, dac=0)
         self.submodules.ad9154_1 = cls(platform, self.jesd_1, dac=1)
         self.csr_devices.append("ad9154_crg")
-        self.csr_devices.append("ad9154_0")
-        self.csr_devices.append("ad9154_1")
+        self.csr_devices.append("jesd_0")
+        self.csr_devices.append("jesd_1")
 
         self.config["HAS_AD9154"] = None
-        self.add_csr_group("ad9154", ["ad9154_0", "ad9154_1"])
+        self.add_csr_group("ad9154", ["jesd_0", "jesd_1"])
 
         self.config["RTIO_FIRST_SAWG_CHANNEL"] = len(rtio_channels)
         rtio_channels.extend(rtio.Channel.from_phy(phy)
