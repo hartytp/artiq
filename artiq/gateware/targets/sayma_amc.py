@@ -176,23 +176,23 @@ class Standalone(MiniSoC, AMPSoC, RTMCommon):
             platform, sample_rate=1e9, fabric_freq=rtio_clk_freq,
             refclk_freq=250e6, use_rtio_clock=False)
 
-        self.submodules.jesd_0 = jesd204_tools.UltrascaleTX(
+        self.submodules.ad9154_jesd_0 = jesd204_tools.UltrascaleTX(
             platform, sys_crg=self.crg, jesd_crg=self.ad9154_crg, dac=0)
-        self.submodules.jesd_1 = jesd204_tools.UltrascaleTX(
+        self.submodules.ad9154_jesd_1 = jesd204_tools.UltrascaleTX(
             platform, sys_crg=self.crg, jesd_crg=self.ad9154_crg, dac=1)
 
         if with_sawg:
             cls = AD9154
         else:
             cls = AD9154NoSAWG
-        self.submodules.ad9154_0 = cls(platform, self.jesd_0, dac=0)
-        self.submodules.ad9154_1 = cls(platform, self.jesd_1, dac=1)
+        self.submodules.ad9154_0 = cls(platform, self.ad9154_jesd_0, dac=0)
+        self.submodules.ad9154_1 = cls(platform, self.ad9154_jesd_1, dac=1)
         self.csr_devices.append("ad9154_crg")
-        self.csr_devices.append("jesd_0")
-        self.csr_devices.append("jesd_1")
+        self.csr_devices.append("ad9154_jesd_0")
+        self.csr_devices.append("ad9154_jesd_1")
 
         self.config["HAS_AD9154"] = None
-        self.add_csr_group("ad9154", ["jesd_0", "jesd_1"])
+        self.add_csr_group("ad9154", ["ad9154_jesd_0", "ad9154_jesd_1"])
 
         self.config["RTIO_FIRST_SAWG_CHANNEL"] = len(rtio_channels)
         rtio_channels.extend(rtio.Channel.from_phy(phy)
