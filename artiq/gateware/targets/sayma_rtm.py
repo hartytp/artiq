@@ -4,6 +4,7 @@ import os
 import argparse
 
 from migen import *
+from migen.build.generic_platform import *
 from migen.genlib.resetsync import AsyncResetSynchronizer
 from migen.build.platforms.sinara import sayma_rtm
 
@@ -162,12 +163,21 @@ class SaymaRTM(Module):
         self.submodules.allaki_atts = gpio.GPIOOut(Cat(*allaki_att_gpio))
         csr_devices.append("allaki_atts")
 
+        platform.add_extension([
+            ("phase_shifter_spi", 0,
+                Subsignal("clk", Pins("clk_mez_gpio_0")),
+                Subsignal("mosi", Pins("clk_mez_gpio_1")),
+                Subsignal("cs_n", Pins("clk_mez_gpio_2"))
+            )])
+
         # HMC clock chip and DAC control
         self.comb += platform.request("ad9154_rst_n").eq(1)
         self.submodules.converter_spi = spi2.SPIMaster(spi2.SPIInterface(
             platform.request("hmc_spi"),
             platform.request("ad9154_spi", 0),
-            platform.request("ad9154_spi", 1)))
+            platform.request("ad9154_spi", 1),
+            platform.request("phase_shifter_spi")))
+
         csr_devices.append("converter_spi")
         self.submodules.hmc7043_reset = gpio.GPIOOut(
             platform.request("hmc7043_reset"), reset_out=1)
