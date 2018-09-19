@@ -1,7 +1,7 @@
 from collections import namedtuple
+import numpy as np
 
 from migen import *
-from migen.genlib.cdc import MultiReg
 from migen.genlib.resetsync import AsyncResetSynchronizer
 from misoc.interconnect.csr import *
 
@@ -15,22 +15,48 @@ from jesd204b.core import JESD204BCoreTXControl
 
 
 class UltrascaleCRG(Module, AutoCSR):
-    linerate = int(10e9)  # linerate = 20*data_rate*4/8 = data_rate*10
-    refclk_freq = int(250e6)
-    fabric_freq = int(125e6)
 
-    def __init__(self, platform, use_rtio_clock=False):
+    def __init__(self, platform, sample_rate, fabric_freq, refclk_freq,
+                 use_rtio_clock=False):
+
+        ps = self.jesd_ps = JESD204BPhysicalSettings(l=8, m=4, n=16, np=16)
+        ts = self.jesd_ts = JESD204BTransportSettings(f=2, s=2, k=16, cs=0)
+        self.jesd_settings = JESD204BSettings(ps, ts, did=0x5a, bid=0x5)
+
+        self.linerate = int(20*sample_rate*ps.m/ps.l)
+        self.refclk_freq = int(refclk_freq)
+        self.fabric_freq = int(fabric_freq)
+
+        sysref_freq = sample_rate * ts.s / (ts.k * ts.f)
+        sysref_div = int(np.log2(fabric_freq/sysref_freq))
+
+        assert sysref_freq == fabric_freq / (1 << sysref_div)
+        assert sysref_div >= 1
+
+        if refclk_freq == fabric_freq:
+            clk_sel = 0b00
+        elif refclk_freq == 2*fabric_freq:
+            clk_sel = 0b01
+        else:
+            raise ValueError("Invalid refclk frequency")
+
+        self.jref_en = CSRStorage(reset=0)
         self.ibuf_disable = CSRStorage(reset=1)
         self.jreset = CSRStorage(reset=1)
+
+        self.jref_ctr = Signal(sysref_div)
         self.jref = Signal()
+        self.jref_out = Signal(reset_less=True)
         self.refclk = Signal()
+
         self.clock_domains.cd_jesd = ClockDomain()
 
         refclk2 = Signal()
         refclk_pads = platform.request("dac_refclk", 0)
         platform.add_period_constraint(refclk_pads.p, 1e9/self.refclk_freq)
         self.specials += [
-            Instance("IBUFDS_GTE3", i_CEB=self.ibuf_disable.storage, p_REFCLK_HROW_CK_SEL=0b01,
+            Instance("IBUFDS_GTE3", i_CEB=self.ibuf_disable.storage,
+                     p_REFCLK_HROW_CK_SEL=clk_sel,
                      i_I=refclk_pads.p, i_IB=refclk_pads.n,
                      o_O=self.refclk, o_ODIV2=refclk2),
             AsyncResetSynchronizer(self.cd_jesd, self.jreset.storage),
@@ -39,24 +65,17 @@ class UltrascaleCRG(Module, AutoCSR):
         if use_rtio_clock:
             self.comb += self.cd_jesd.clk.eq(ClockSignal("rtio"))
         else:
-            self.specials += Instance("BUFG_GT", i_I=refclk2, o_O=self.cd_jesd.clk)
+            self.specials += Instance("BUFG_GT",
+                                      i_I=refclk2,
+                                      o_O=self.cd_jesd.clk)
 
-        jref = platform.request("dac_sysref")
-        jref_se = Signal()
-        jref_r = Signal()
-        self.specials += [
-            Instance("IBUFDS_IBUFDISABLE",
-                p_USE_IBUFDISABLE="TRUE", p_SIM_DEVICE="ULTRASCALE",
-                i_IBUFDISABLE=self.ibuf_disable.storage,
-                i_I=jref.p, i_IB=jref.n,
-                o_O=jref_se),
-            # SYSREF normally meets s/h at the FPGA, except during margin
-            # scan and before full initialization.
-            # Be paranoid and use a double-register anyway.
-            Instance("FD", i_C=ClockSignal("jesd"), i_D=jref_se, o_Q=jref_r,
-                     attr={("IOB", "TRUE")}),
-            Instance("FD", i_C=ClockSignal("jesd"), i_D=jref_r, o_Q=self.jref)
-        ]
+        self.sync.rtio += self.jref_ctr.eq(self.jref_ctr + 1)
+        self.comb += self.jref.eq(self.jref_ctr[-1])
+        self.sync.jesd += self.jref_out.eq(self.jref & self.jref_en.storage)
+
+        sysref_out = platform.request("sma_io", 0)
+        self.comb += sysref_out.level.eq(self.jref_out)
+        self.comb += sysref_out.direction.eq(1)
 
 
 PhyPads = namedtuple("PhyPads", "txp txn")
@@ -64,9 +83,6 @@ PhyPads = namedtuple("PhyPads", "txp txn")
 
 class UltrascaleTX(Module, AutoCSR):
     def __init__(self, platform, sys_crg, jesd_crg, dac):
-        ps = JESD204BPhysicalSettings(l=8, m=4, n=16, np=16)
-        ts = JESD204BTransportSettings(f=2, s=2, k=16, cs=0)
-        settings = JESD204BSettings(ps, ts, did=0x5a, bid=0x5)
 
         jesd_pads = platform.request("dac_jesd", dac)
         phys = []
@@ -78,7 +94,7 @@ class UltrascaleTX(Module, AutoCSR):
                     cpll, PhyPads(jesd_pads.txp[i], jesd_pads.txn[i]),
                     jesd_crg.fabric_freq, transceiver="gth")
             platform.add_period_constraint(phy.transmitter.cd_tx.clk,
-                    40*1e9/jesd_crg.linerate)
+                                           40*1e9/jesd_crg.linerate)
             platform.add_false_path_constraints(
                 sys_crg.cd_sys.clk,
                 jesd_crg.cd_jesd.clk,
@@ -86,26 +102,7 @@ class UltrascaleTX(Module, AutoCSR):
             phys.append(phy)
 
         self.submodules.core = JESD204BCoreTX(
-            phys, settings, converter_data_width=128)
+            phys, jesd_crg.jesd_settings, converter_data_width=128)
         self.submodules.control = JESD204BCoreTXControl(self.core)
         self.core.register_jsync(platform.request("dac_sync", dac))
         self.core.register_jref(jesd_crg.jref)
-
-
-# This assumes:
-#  * coarse RTIO frequency = 16*SYSREF frequency
-#  * JESD and coarse RTIO clocks are the same
-#    (only reset may differ).
-#  * SYSREF meets setup/hold at the FPGA when sampled
-#    in the JESD/RTIO domain.
-#
-# Look at the 4 LSBs of the coarse RTIO timestamp counter
-# to determine SYSREF phase.
-
-class SysrefSampler(Module, AutoCSR):
-    def __init__(self, coarse_ts, jref):
-        self.sample_result = CSRStatus()
-
-        sample = Signal()
-        self.sync.jesd += If(coarse_ts[:4] == 0, sample.eq(jref))
-        self.specials += MultiReg(sample, self.sample_result.status)
