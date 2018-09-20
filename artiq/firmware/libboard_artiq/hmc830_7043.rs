@@ -384,40 +384,35 @@ pub mod hmc7043 {
             csr::ad9154_crg::ibuf_disable_write(0);
         }
     }
+}
 
-    pub fn sysref_offset_dac(dacno: u8, phase_offset: u16) {
-        /*  Analog delay resolution: 25ps
-         *  Digital delay resolution: 1/2 input clock cycle = 416ps for 1.2GHz
-         *  16*25ps = 400ps: limit analog delay to 16 steps instead of 32.
+
+pub mod dealy_line {
+    /* NB6L295 two-channel digital delay line */
+    use board_misoc::{csr, clock};
+
+    // data latched on rising edge, changes on falling edge
+    // pull EN low before/after transaction, pull high during transaction (optional)
+    //
+    pub fn set_delay(dacno: u8, delay: u16) {
+        /*  ...
          */
-        let analog_delay = (phase_offset % 17) as u8;
-        let digital_delay = (phase_offset / 17) as u8;
-        spi_setup();
-        if dacno == 0 {
-            write(0x00d5, analog_delay);
-            write(0x00d6, digital_delay);
-        } else if dacno == 1 {
-            write(0x00e9, analog_delay);
-            write(0x00ea, digital_delay);
-        } else {
-            unimplemented!();
+        if dacno != 0 && dacno != 1 { error!("Invalid dac number")}
+        if delay > 512 { error!("Invalid delay") }
+
+        unsafe {
+            while csr::converter_spi::idle_read() == 0 {}
+            csr::converter_spi::offline_write(0);
+            csr::converter_spi::end_write(1);
+            csr::converter_spi::cs_polarity_write(0b0000);
+            csr::converter_spi::clk_polarity_write(0);
+            csr::converter_spi::clk_phase_write(0);
+            csr::converter_spi::lsb_first_write(0);
+            csr::converter_spi::length_write(11);
+            csr::converter_spi::div_write(10);
         }
-        clock::spin_us(100);
-    }
-
-    pub fn sysref_offset_fpga(phase_offset: u16) {
-        let analog_delay = (phase_offset % 17) as u8;
-        let digital_delay = (phase_offset / 17) as u8;
-        spi_setup();
-        write(0x0111, analog_delay);
-        write(0x0112, digital_delay);
-        clock::spin_us(100);
-    }
-
-    pub fn sysref_slip() {
-        spi_setup();
-        write(0x0002, 0x02);
-        write(0x0002, 0x00);
+        while csr::converter_spi::writable_read() == 0 {}
+        csr::converter_spi::data_write((dacno + (delay << 2)) as u32 << 21);
         clock::spin_us(100);
     }
 }
@@ -443,6 +438,7 @@ pub fn init() -> Result<(), &'static str> {
     hmc7043::test_gpo()?;
     hmc7043::check_phased()?;
     hmc7043::enable_fpga_ibuf();
+
 
     Ok(())
 }
