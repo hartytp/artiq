@@ -165,9 +165,10 @@ class SaymaRTM(Module):
 
         platform.add_extension([
             ("phase_shifter_spi", 0,
-                Subsignal("clk", Pins("clk_mez_gpio_0")),
-                Subsignal("mosi", Pins("clk_mez_gpio_1")),
-                Subsignal("cs_n", Pins("clk_mez_gpio_2"))
+                Subsignal("clk", Pins("clk_mez:gpio_0")),
+                Subsignal("mosi", Pins("clk_mez:gpio_1")),
+                Subsignal("cs_n", Pins("clk_mez:gpio_8")),
+                IOStandard("LVCMOS33")
             )])
 
         # HMC clock chip and DAC control
