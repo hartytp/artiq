@@ -111,6 +111,9 @@ pub fn sysref_auto_dac_align() -> Result<(), &'static str> {
             phase
         }
     };
+    unsafe {
+        csr::ad9154_crg::jref_en_write(1);
+    }
 
     for dacno in 0..csr::AD9154.len() {
         sysref_dac_align(dacno as u8, phase)?;
