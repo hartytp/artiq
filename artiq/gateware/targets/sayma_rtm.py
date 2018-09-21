@@ -167,11 +167,20 @@ class SaymaRTM(Module):
             ("sysref_delay_spi", 0,
                 Subsignal("clk", Pins("clk_mez:gpio_0")),
                 Subsignal("mosi", Pins("clk_mez:gpio_1")),
-                Subsignal("cs_n", Pins("clk_mez:gpio_8")),
                 IOStandard("LVCMOS33")
             )])
-        sysref_delay_latch = platform.request("clk_mez:gpio_9")
+        platform.add_extension([("sysref_delay_en_n", 0,
+                                 Pins("clk_mez:gpio_8"), IOStandard("LVCMOS33"))])
+        platform.add_extension([("sysref_delay_latch", 0,
+                                 Pins("clk_mez:gpio_9"), IOStandard("LVCMOS33"))])
+        sysref_delay_en_n = platform.request("sysref_delay_en_n")
+        sysref_delay_latch = platform.request("sysref_delay_latch")
+        self.submodules.sysref_delay_en_n = gpio.GPIOOut(sysref_delay_en_n)
         self.submodules.sysref_delay_latch = gpio.GPIOOut(sysref_delay_latch)
+        csr_devices.append("sysref_delay_en_n")
+        csr_devices.append("sysref_delay_latch")
+        sysref_spi = platform.request("sysref_delay_spi")
+        sysref_spi.cs_n = Signal()
 
         # HMC clock chip and DAC control
         self.comb += platform.request("ad9154_rst_n").eq(1)
@@ -179,7 +188,7 @@ class SaymaRTM(Module):
             platform.request("hmc_spi"),
             platform.request("ad9154_spi", 0),
             platform.request("ad9154_spi", 1),
-            platform.request("sysref_delay_spi")))
+            sysref_spi))
 
         csr_devices.append("converter_spi")
         self.submodules.hmc7043_reset = gpio.GPIOOut(

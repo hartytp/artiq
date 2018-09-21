@@ -387,37 +387,48 @@ pub mod hmc7043 {
 }
 
 
-pub mod dealy_line {
+pub mod delay_line {
     /* NB6L295 two-channel digital delay line */
     use board_misoc::{csr, clock};
 
     // data latched on rising edge, changes on falling edge
     // pull EN low before/after transaction, pull high during transaction (optional)
     //
-    pub fn set_delay(dacno: u8, delay: u16) {
+    pub fn set_delay(dacno: u32, delay: u32) {
         /*  ...
          */
         if dacno != 0 && dacno != 1 { error!("Invalid dac number")}
-        if delay > 512 { error!("Invalid delay") }
+        if delay > 511 { error!("Invalid delay") }
 
         unsafe {
             while csr::converter_spi::idle_read() == 0 {}
+
             csr::converter_spi::offline_write(0);
             csr::converter_spi::end_write(1);
             csr::converter_spi::cs_polarity_write(0b0000);
             csr::converter_spi::clk_polarity_write(0);
             csr::converter_spi::clk_phase_write(0);
-            csr::converter_spi::lsb_first_write(0);
-            csr::converter_spi::length_write(11);
-            csr::converter_spi::div_write(10);
+            csr::converter_spi::lsb_first_write(1);
+            csr::converter_spi::length_write(11-1);
+            csr::converter_spi::div_write(20);
+
+            while csr::converter_spi::writable_read() == 0 {}
+
+            csr::sysref_delay_en_n::out_write(1);
+            csr::converter_spi::data_write(dacno + (delay << 2));
+
+            while csr::converter_spi::idle_read() == 0 {}
+
+            csr::sysref_delay_latch::out_write(1);
+            csr::sysref_delay_latch::out_write(0);
+            csr::sysref_delay_en_n::out_write(0);
         }
-        while csr::converter_spi::writable_read() == 0 {}
-        csr::converter_spi::data_write((dacno + (delay << 2)) as u32 << 21);
-        clock::spin_us(100);
     }
 }
 
 pub fn init() -> Result<(), &'static str> {
+    use board_misoc::{clock};
+
     clock_mux::init();
     /* do not use other SPI devices before HMC830 SPI mode selection */
     hmc830::select_spi_mode();
@@ -439,6 +450,13 @@ pub fn init() -> Result<(), &'static str> {
     hmc7043::check_phased()?;
     hmc7043::enable_fpga_ibuf();
 
+    while true {
+        for delay in 0..511 {
+            delay_line::set_delay(0, delay);
+            delay_line::set_delay(1, delay);
+            clock::spin_us(1000000)
+        }
+    }
 
     Ok(())
 }
