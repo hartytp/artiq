@@ -427,7 +427,7 @@ pub mod delay_line {
 }
 
 pub fn init() -> Result<(), &'static str> {
-    use board_misoc::{clock};
+    use board_misoc::{csr, clock};
 
     clock_mux::init();
     /* do not use other SPI devices before HMC830 SPI mode selection */
@@ -450,15 +450,15 @@ pub fn init() -> Result<(), &'static str> {
     hmc7043::check_phased()?;
     hmc7043::enable_fpga_ibuf();
 
-    csr::ad9154_crg::jref_en_write(1);
+    unsafe { csr::ad9154_crg::jref_en_write(1); }
 
-    while true {
-        for delay in 0..511 {
-            delay_line::set_delay(0, delay);
-            delay_line::set_delay(1, delay);
-            clock::spin_us(1000000)
-        }
-    }
+    //while true {
+    //    for delay in 0..511 {
+    //        delay_line::set_delay(0, delay);
+    //        delay_line::set_delay(1, delay);
+    //        clock::spin_us(1000000)
+    //    }
+    // }
 
     Ok(())
 }
