@@ -164,12 +164,14 @@ class SaymaRTM(Module):
         csr_devices.append("allaki_atts")
 
         platform.add_extension([
-            ("phase_shifter_spi", 0,
+            ("sysref_delay_spi", 0,
                 Subsignal("clk", Pins("clk_mez:gpio_0")),
                 Subsignal("mosi", Pins("clk_mez:gpio_1")),
                 Subsignal("cs_n", Pins("clk_mez:gpio_8")),
                 IOStandard("LVCMOS33")
             )])
+        sysref_delay_latch = platform.request("clk_mez:gpio_9")
+        self.submodules.sysref_delay_latch = gpio.GPIOOut(sysref_delay_latch)
 
         # HMC clock chip and DAC control
         self.comb += platform.request("ad9154_rst_n").eq(1)
@@ -177,7 +179,7 @@ class SaymaRTM(Module):
             platform.request("hmc_spi"),
             platform.request("ad9154_spi", 0),
             platform.request("ad9154_spi", 1),
-            platform.request("phase_shifter_spi")))
+            platform.request("sysref_delay_spi")))
 
         csr_devices.append("converter_spi")
         self.submodules.hmc7043_reset = gpio.GPIOOut(
