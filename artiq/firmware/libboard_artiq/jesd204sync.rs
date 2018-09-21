@@ -10,11 +10,11 @@ fn sysref_cal_dac(dacno: u8) -> Result<u16, &'static str> {
     let dmin;
     let dmax;
 
-    hmc7043::sysref_offset_dac(dacno, d);
+    // hmc7043::sysref_offset_dac(dacno, d);
     ad9154::dac_sync(dacno)?;
 
     loop {
-        hmc7043::sysref_offset_dac(dacno, d);
+        // hmc7043::sysref_offset_dac(dacno, d);
         let realign_occured = ad9154::dac_sync(dacno)?;
         if realign_occured {
             dmin = d;
@@ -28,11 +28,11 @@ fn sysref_cal_dac(dacno: u8) -> Result<u16, &'static str> {
     }
 
     d += 17;  // get away from jitter
-    hmc7043::sysref_offset_dac(dacno, d);
+    // hmc7043::sysref_offset_dac(dacno, d);
     ad9154::dac_sync(dacno)?;
 
     loop {
-        hmc7043::sysref_offset_dac(dacno, d);
+        // hmc7043::sysref_offset_dac(dacno, d);
         let realign_occured = ad9154::dac_sync(dacno)?;
         if realign_occured {
             dmax = d;
@@ -56,10 +56,10 @@ fn sysref_dac_align(dacno: u8, phase: u16) -> Result<(), &'static str> {
 
     info!("verifying SYSREF margins at DAC-{}...", dacno);
 
-    hmc7043::sysref_offset_dac(dacno, phase);
+    // hmc7043::sysref_offset_dac(dacno, phase);
     ad9154::dac_sync(dacno)?;
     for d in 0..128 {
-        hmc7043::sysref_offset_dac(dacno, phase - d);
+        // hmc7043::sysref_offset_dac(dacno, phase - d);
         let realign_occured = ad9154::dac_sync(dacno)?;
         if realign_occured {
             margin_minus = Some(d);
@@ -67,10 +67,10 @@ fn sysref_dac_align(dacno: u8, phase: u16) -> Result<(), &'static str> {
         }
     }
 
-    hmc7043::sysref_offset_dac(dacno, phase);
+    // hmc7043::sysref_offset_dac(dacno, phase);
     ad9154::dac_sync(dacno)?;
     for d in 0..128 {
-        hmc7043::sysref_offset_dac(dacno, phase + d);
+        // hmc7043::sysref_offset_dac(dacno, phase + d);
         let realign_occured = ad9154::dac_sync(dacno)?;
         if realign_occured {
             margin_plus = Some(d);
@@ -90,7 +90,7 @@ fn sysref_dac_align(dacno: u8, phase: u16) -> Result<(), &'static str> {
     }
 
     // Put SYSREF at the correct phase and sync DAC
-    hmc7043::sysref_offset_dac(dacno, phase);
+    // hmc7043::sysref_offset_dac(dacno, phase);
     ad9154::dac_sync(dacno)?;
 
     Ok(())
