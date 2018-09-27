@@ -4,6 +4,7 @@ import os
 import argparse
 
 from migen import *
+from migen.build.generic_platform import *
 from migen.genlib.resetsync import AsyncResetSynchronizer
 from migen.build.platforms.sinara import sayma_rtm
 
@@ -162,12 +163,34 @@ class SaymaRTM(Module):
         self.submodules.allaki_atts = gpio.GPIOOut(Cat(*allaki_att_gpio))
         csr_devices.append("allaki_atts")
 
+        platform.add_extension([
+            ("sysref_delay_spi", 0,
+                Subsignal("clk", Pins("clk_mez:gpio_0")),
+                Subsignal("mosi", Pins("clk_mez:gpio_1")),
+                Subsignal("cs_n", Pins("clk_mez:gpio_8")),
+                IOStandard("LVCMOS33")
+            )])
+        platform.add_extension([("sysref_delay_en_n", 0,
+                                 Pins("clk_mez:gpio_8"), IOStandard("LVCMOS33"))])
+        platform.add_extension([("sysref_delay_latch", 0,
+                                 Pins("clk_mez:gpio_9"), IOStandard("LVCMOS33"))])
+        sysref_delay_en_n = platform.request("sysref_delay_en_n")
+        sysref_delay_latch = platform.request("sysref_delay_latch")
+        self.submodules.sysref_delay_en_n = gpio.GPIOOut(sysref_delay_en_n)
+        self.submodules.sysref_delay_latch = gpio.GPIOOut(sysref_delay_latch)
+        csr_devices.append("sysref_delay_en_n")
+        csr_devices.append("sysref_delay_latch")
+        sysref_spi = platform.request("sysref_delay_spi")
+        sysref_spi.cs_n = Signal()
+
         # HMC clock chip and DAC control
         self.comb += platform.request("ad9154_rst_n").eq(1)
         self.submodules.converter_spi = spi2.SPIMaster(spi2.SPIInterface(
             platform.request("hmc_spi"),
             platform.request("ad9154_spi", 0),
-            platform.request("ad9154_spi", 1)))
+            platform.request("ad9154_spi", 1),
+            sysref_spi))
+
         csr_devices.append("converter_spi")
         self.submodules.hmc7043_reset = gpio.GPIOOut(
             platform.request("hmc7043_reset"), reset_out=1)

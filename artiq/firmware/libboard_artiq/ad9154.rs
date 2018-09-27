@@ -41,31 +41,31 @@ pub fn jesd_reset(reset: bool) {
 
 fn jesd_enable(dacno: u8, en: bool) {
     unsafe {
-        (csr::AD9154[dacno as usize].jesd_control_enable_write)(if en {1} else {0})
+        (csr::AD9154[dacno as usize].control_enable_write)(if en {1} else {0})
     }
 }
 
 fn jesd_ready(dacno: u8) -> bool {
     unsafe {
-        (csr::AD9154[dacno as usize].jesd_control_ready_read)() != 0
+        (csr::AD9154[dacno as usize].control_ready_read)() != 0
     }
 }
 
 fn jesd_prbs(dacno: u8, en: bool) {
     unsafe {
-        (csr::AD9154[dacno as usize].jesd_control_prbs_config_write)(if en {0b01} else {0b00})
+        (csr::AD9154[dacno as usize].control_prbs_config_write)(if en {0b01} else {0b00})
     }
 }
 
 fn jesd_stpl(dacno: u8, en: bool) {
     unsafe {
-        (csr::AD9154[dacno as usize].jesd_control_stpl_enable_write)(if en {1} else {0})
+        (csr::AD9154[dacno as usize].control_stpl_enable_write)(if en {1} else {0})
     }
 }
 
 fn jesd_jsync(dacno: u8) -> bool {
     unsafe {
-        (csr::AD9154[dacno as usize].jesd_control_jsync_read)() != 0
+        (csr::AD9154[dacno as usize].control_jsync_read)() != 0
     }
 }
 
@@ -184,7 +184,7 @@ fn dac_setup(dacno: u8, linerate: u64) -> Result<(), &'static str> {
 
     write(ad9154_reg::SPI_PAGEINDX, 0x3); // A and B dual
 
-    write(ad9154_reg::INTERP_MODE, 0); // 1x
+    write(ad9154_reg::INTERP_MODE, 0x03); // 4x interpolation
     write(ad9154_reg::MIX_MODE, 0);
     write(ad9154_reg::DATA_FORMAT, 0*ad9154_reg::BINARY_FORMAT); // s16
     write(ad9154_reg::DATAPATH_CTRL,
@@ -344,7 +344,7 @@ fn dac_setup(dacno: u8, linerate: u64) -> Result<(), &'static str> {
             0x5*ad9154_reg::SPI_CP_LEVEL_THRESHOLD_LOW |
             0*ad9154_reg::SPI_CP_LEVEL_DET_PD);
     write(ad9154_reg::VCO_VARACTOR_CTRL_0,
-            0xe*ad9154_reg::SPI_VCO_VARACTOR_OFFSET | 
+            0xe*ad9154_reg::SPI_VCO_VARACTOR_OFFSET |
             0x7*ad9154_reg::SPI_VCO_VARACTOR_REF_TCF);
     write(ad9154_reg::VCO_VARACTOR_CTRL_1,
             0x6*ad9154_reg::SPI_VCO_VARACTOR_REF);

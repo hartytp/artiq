@@ -26,23 +26,19 @@ from artiq.gateware.drtio import DRTIOMaster, DRTIOSatellite
 from artiq.build_soc import *
 
 
-class AD9154(Module, AutoCSR):
-    def __init__(self, platform, sys_crg, jesd_crg, dac):
-        self.submodules.jesd = jesd204_tools.UltrascaleTX(
-            platform, sys_crg, jesd_crg, dac)
+class AD9154(Module):
+    def __init__(self, platform, jesd, dac):
 
         self.sawgs = [sawg.Channel(width=16, parallelism=4) for i in range(4)]
         self.submodules += self.sawgs
 
-        for conv, ch in zip(self.jesd.core.sink.flatten(), self.sawgs):
+        for conv, ch in zip(jesd.core.sink.flatten(), self.sawgs):
             assert len(Cat(ch.o)) == len(conv)
             self.sync.jesd += conv.eq(Cat(ch.o))
 
 
-class AD9154NoSAWG(Module, AutoCSR):
-    def __init__(self, platform, sys_crg, jesd_crg, dac):
-        self.submodules.jesd = jesd204_tools.UltrascaleTX(
-            platform, sys_crg, jesd_crg, dac)
+class AD9154NoSAWG(Module):
+    def __init__(self, platform, jesd, dac):
 
         self.sawgs = []
 
@@ -52,7 +48,7 @@ class AD9154NoSAWG(Module, AutoCSR):
         samples = [[Signal(16) for i in range(4)] for j in range(4)]
         self.comb += [
             a.eq(Cat(b)) for a, b in zip(
-                self.jesd.core.sink.flatten(), samples)
+                jesd.core.sink.flatten(), samples)
         ]
         # ch0: 16-step ramp with big carry toggles
         for i in range(4):
@@ -138,7 +134,7 @@ class Standalone(MiniSoC, AMPSoC, RTMCommon):
         AMPSoC.__init__(self)
         RTMCommon.__init__(self)
         add_identifier(self, suffix=".without-sawg" if not with_sawg else "")
-        self.config["HMC830_REF"] = "100"
+        self.config["HMC830_REF"] = "150"
 
         platform = self.platform
 
@@ -163,29 +159,36 @@ class Standalone(MiniSoC, AMPSoC, RTMCommon):
             phy = ttl_simple.Output(platform.request("user_led", i))
             self.submodules += phy
             rtio_channels.append(rtio.Channel.from_phy(phy))
-        sma_io = platform.request("sma_io", 0)
-        self.comb += sma_io.direction.eq(1)
-        phy = ttl_simple.Output(sma_io.level)
-        self.submodules += phy
-        rtio_channels.append(rtio.Channel.from_phy(phy))
+
         sma_io = platform.request("sma_io", 1)
         self.comb += sma_io.direction.eq(0)
         phy = ttl_simple.InOut(sma_io.level)
         self.submodules += phy
         rtio_channels.append(rtio.Channel.from_phy(phy))
 
-        self.submodules.ad9154_crg = jesd204_tools.UltrascaleCRG(platform)
+        self.submodules.ad9154_crg = jesd204_tools.UltrascaleCRG(
+            platform, sample_rate=600e6, fabric_freq=125e6,
+            refclk_freq=150e6, use_rtio_clock=False)
+
+        self.submodules.ad9154_jesd_0 = jesd204_tools.UltrascaleTX(
+            platform, sys_crg=self.crg, jesd_crg=self.ad9154_crg, dac=0)
+        self.submodules.ad9154_jesd_1 = jesd204_tools.UltrascaleTX(
+            platform, sys_crg=self.crg, jesd_crg=self.ad9154_crg, dac=1)
+
         if with_sawg:
             cls = AD9154
         else:
             cls = AD9154NoSAWG
-        self.submodules.ad9154_0 = cls(platform, self.crg, self.ad9154_crg, 0)
-        self.submodules.ad9154_1 = cls(platform, self.crg, self.ad9154_crg, 1)
+
+        self.submodules.ad9154_0 = cls(platform, self.ad9154_jesd_0, dac=0)
+        self.submodules.ad9154_1 = cls(platform, self.ad9154_jesd_1, dac=1)
+
         self.csr_devices.append("ad9154_crg")
-        self.csr_devices.append("ad9154_0")
-        self.csr_devices.append("ad9154_1")
+        self.csr_devices.append("ad9154_jesd_0")
+        self.csr_devices.append("ad9154_jesd_1")
+        self.add_csr_group("ad9154", ["ad9154_jesd_0", "ad9154_jesd_1"])
+
         self.config["HAS_AD9154"] = None
-        self.add_csr_group("ad9154", ["ad9154_0", "ad9154_1"])
         self.config["RTIO_FIRST_SAWG_CHANNEL"] = len(rtio_channels)
         rtio_channels.extend(rtio.Channel.from_phy(phy)
                                 for sawg in self.ad9154_0.sawgs +
@@ -218,10 +221,6 @@ class Standalone(MiniSoC, AMPSoC, RTMCommon):
         self.submodules.rtio_analyzer = rtio.Analyzer(self.rtio_core.cri,
                                                       self.get_native_sdram_if())
         self.csr_devices.append("rtio_analyzer")
-
-        self.submodules.sysref_sampler = jesd204_tools.SysrefSampler(
-            self.rtio_core.coarse_ts, self.ad9154_crg.jref)
-        self.csr_devices.append("sysref_sampler")
 
 
 class MasterDAC(MiniSoC, AMPSoC, RTMCommon):

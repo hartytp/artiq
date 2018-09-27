@@ -155,18 +155,18 @@ mod hmc830 {
 pub mod hmc7043 {
     use board_misoc::{csr, clock};
 
-    // All frequencies assume 1.2GHz HMC830 output
-    const DAC_CLK_DIV: u16 = 2;               // 600MHz
-    const FPGA_CLK_DIV: u16 = 8;              // 150MHz
-    const SYSREF_DIV: u16 = 128;              // 9.375MHz
+    // All frequencies assume 2.4GHz HMC830 output
+    const DAC_CLK_DIV: u16 = 1;               // 2.4GHz
+    const FPGA_CLK_DIV: u16 = 16;              // 150MHz
+    const SYSREF_DIV: u16 = 256;              // 9.375MHz
     const HMC_SYSREF_DIV: u16 = SYSREF_DIV*8; // 1.171875MHz (must be <= 4MHz)
 
     // enabled, divider, output config
     const OUTPUT_CONFIG: [(bool, u16, u8); 14] = [
         (true,  DAC_CLK_DIV,  0x08),  // 0: DAC2_CLK
-        (true,  SYSREF_DIV,   0x08),  // 1: DAC2_SYSREF
+        (false,  SYSREF_DIV,   0x08), // 1: DAC2_SYSREF
         (true,  DAC_CLK_DIV,  0x08),  // 2: DAC1_CLK
-        (true,  SYSREF_DIV,   0x08),  // 3: DAC1_SYSREF
+        (false,  SYSREF_DIV,   0x08), // 3: DAC1_SYSREF
         (false, 0,            0x08),  // 4: ADC2_CLK
         (false, 0,            0x08),  // 5: ADC2_SYSREF
         (false, 0,            0x08),  // 6: GTP_CLK2
@@ -385,40 +385,40 @@ pub mod hmc7043 {
         }
     }
 
-    pub fn sysref_offset_dac(dacno: u8, phase_offset: u16) {
-        /*  Analog delay resolution: 25ps
-         *  Digital delay resolution: 1/2 input clock cycle = 416ps for 1.2GHz
-         *  16*25ps = 400ps: limit analog delay to 16 steps instead of 32.
+}
+
+pub mod delay_line {
+    /* NB6L295 two-channel digital delay line */
+    use board_misoc::{csr, clock};
+
+    pub fn set_delay(dacno: u8, delay: u16) {
+        /*  9-bit delay with 11ps resolution
          */
-        let analog_delay = (phase_offset % 17) as u8;
-        let digital_delay = (phase_offset / 17) as u8;
-        spi_setup();
-        if dacno == 0 {
-            write(0x00d5, analog_delay);
-            write(0x00d6, digital_delay);
-        } else if dacno == 1 {
-            write(0x00e9, analog_delay);
-            write(0x00ea, digital_delay);
-        } else {
-            unimplemented!();
+        if dacno != 0 && dacno != 1 { error!("Invalid dac number")}
+        if delay > 511 { error!("Invalid delay") }
+        unsafe {
+            while csr::converter_spi::idle_read() == 0 {}
+
+            csr::converter_spi::offline_write(0);
+            csr::converter_spi::end_write(1);
+            csr::converter_spi::cs_polarity_write(0b0000);
+            csr::converter_spi::clk_polarity_write(0);
+            csr::converter_spi::clk_phase_write(0);
+            csr::converter_spi::lsb_first_write(1);
+            csr::converter_spi::length_write(11-1);
+            csr::converter_spi::div_write(20);
+
+            while csr::converter_spi::writable_read() == 0 {}
+
+            csr::sysref_delay_en_n::out_write(1);
+            csr::converter_spi::data_write(dacno as u32 + (delay << 2) as u32);
+
+            while csr::converter_spi::idle_read() == 0 {}
+
+            csr::sysref_delay_latch::out_write(1);
+            csr::sysref_delay_latch::out_write(0);
+            csr::sysref_delay_en_n::out_write(0);
         }
-        clock::spin_us(100);
-    }
-
-    pub fn sysref_offset_fpga(phase_offset: u16) {
-        let analog_delay = (phase_offset % 17) as u8;
-        let digital_delay = (phase_offset / 17) as u8;
-        spi_setup();
-        write(0x0111, analog_delay);
-        write(0x0112, digital_delay);
-        clock::spin_us(100);
-    }
-
-    pub fn sysref_slip() {
-        spi_setup();
-        write(0x0002, 0x02);
-        write(0x0002, 0x00);
-        clock::spin_us(100);
     }
 }
 
@@ -429,11 +429,9 @@ pub fn init() -> Result<(), &'static str> {
     hmc830::detect()?;
     hmc830::init();
 
-    // 1.2GHz out
-    #[cfg(hmc830_ref = "100")]
-    hmc830::set_dividers(1, 24, 0, 2);
+    // 2.4GHz out
     #[cfg(hmc830_ref = "150")]
-    hmc830::set_dividers(2, 32, 0, 2);
+    hmc830::set_dividers(2, 32, 0, 1);
 
     hmc830::check_locked()?;
 
