@@ -167,7 +167,6 @@ class SaymaRTM(Module):
             ("sysref_delay_spi", 0,
                 Subsignal("clk", Pins("clk_mez:gpio_0")),
                 Subsignal("mosi", Pins("clk_mez:gpio_1")),
-                Subsignal("cs_n", Pins("clk_mez:gpio_8")),
                 IOStandard("LVCMOS33")
             )])
         platform.add_extension([("sysref_delay_en_n", 0,
