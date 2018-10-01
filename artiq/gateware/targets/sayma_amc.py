@@ -161,7 +161,7 @@ class Standalone(MiniSoC, AMPSoC, RTMCommon):
             rtio_channels.append(rtio.Channel.from_phy(phy))
 
         sma_io = platform.request("sma_io", 1)
-        self.comb += sma_io.direction.eq(0)
+        self.comb += sma_io.direction.eq(1)
         phy = ttl_simple.InOut(sma_io.level)
         self.submodules += phy
         rtio_channels.append(rtio.Channel.from_phy(phy))
