@@ -12,6 +12,7 @@ extern crate crc;
 #[macro_use]
 extern crate log;
 extern crate io;
+#[macro_use]
 extern crate board_misoc;
 extern crate proto_artiq;
 
