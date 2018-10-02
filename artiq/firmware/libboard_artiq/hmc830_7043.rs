@@ -397,20 +397,24 @@ pub mod delay_line {
         if dacno != 0 && dacno != 1 { error!("Invalid dac number")}
         if delay > 511 { error!("Invalid delay") }
         unsafe {
+            csr::ad9154_crg::sysref_out_en_write(0);
+
             while csr::converter_spi::idle_read() == 0 {}
 
             csr::converter_spi::offline_write(0);
             csr::converter_spi::end_write(1);
-            csr::converter_spi::cs_polarity_write(0b0000);
+            csr::converter_spi::cs_polarity_write(0b0001);
             csr::converter_spi::clk_polarity_write(0);
             csr::converter_spi::clk_phase_write(0);
             csr::converter_spi::lsb_first_write(1);
             csr::converter_spi::length_write(11-1);
             csr::converter_spi::div_write(20);
+            csr::converter_spi::cs_write(1 << 4);
 
             while csr::converter_spi::writable_read() == 0 {}
 
             csr::sysref_delay_en_n::out_write(1);
+            // info!("{} {}", dacno, delay);
             csr::converter_spi::data_write(dacno as u32 + (delay << 2) as u32);
 
             while csr::converter_spi::idle_read() == 0 {}
@@ -418,11 +422,15 @@ pub mod delay_line {
             csr::sysref_delay_latch::out_write(1);
             csr::sysref_delay_latch::out_write(0);
             csr::sysref_delay_en_n::out_write(0);
+
+            csr::ad9154_crg::sysref_out_en_write(1);
         }
     }
 }
 
 pub fn init() -> Result<(), &'static str> {
+    use board_misoc::csr;
+
     clock_mux::init();
     /* do not use other SPI devices before HMC830 SPI mode selection */
     hmc830::select_spi_mode();
@@ -430,7 +438,6 @@ pub fn init() -> Result<(), &'static str> {
     hmc830::init();
 
     // 2.4GHz out
-    #[cfg(hmc830_ref = "150")]
     hmc830::set_dividers(2, 32, 0, 1);
 
     hmc830::check_locked()?;
@@ -444,6 +451,11 @@ pub fn init() -> Result<(), &'static str> {
     hmc7043::test_gpo()?;
     hmc7043::check_phased()?;
     hmc7043::enable_fpga_ibuf();
+
+    unsafe {
+         delay_line::set_delay(0, 255);
+         delay_line::set_delay(1, 255);
+    }
 
     Ok(())
 }

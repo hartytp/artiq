@@ -221,6 +221,7 @@ class Standalone(MiniSoC, AMPSoC, RTMCommon):
         self.submodules.rtio_analyzer = rtio.Analyzer(self.rtio_core.cri,
                                                       self.get_native_sdram_if())
         self.csr_devices.append("rtio_analyzer")
+        self.comb += self.ad9154_crg.sysref_ctr.eq(self.rtio_core.coarse_ts[:4])
 
 
 class MasterDAC(MiniSoC, AMPSoC, RTMCommon):

@@ -349,13 +349,13 @@ fn dac_setup(dacno: u8, linerate: u64) -> Result<(), &'static str> {
     write(ad9154_reg::VCO_VARACTOR_CTRL_1,
             0x6*ad9154_reg::SPI_VCO_VARACTOR_REF);
     // ensure link is txing
-    //write(ad9154_reg::SERDESPLL_ENABLE_CNTRL,
-    //        1*ad9154_reg::ENABLE_SERDESPLL | 1*ad9154_reg::RECAL_SERDESPLL)
+    // write(ad9154_reg::SERDESPLL_ENABLE_CNTRL,
+    //        1*ad9154_reg::ENABLE_SERDESPLL | 1*ad9154_reg::RECAL_SERDESPLL);
     write(ad9154_reg::SERDESPLL_ENABLE_CNTRL,
             1*ad9154_reg::ENABLE_SERDESPLL | 0*ad9154_reg::RECAL_SERDESPLL);
     let t = clock::get_ms();
     while read(ad9154_reg::PLL_STATUS) & ad9154_reg::SERDES_PLL_LOCK_RB == 0 {
-        if clock::get_ms() > t + 200 {
+        if clock::get_ms() > t + 2000 {
             return Err("SERDES PLL lock timeout");
         }
     }
@@ -368,12 +368,8 @@ fn dac_setup(dacno: u8, linerate: u64) -> Result<(), &'static str> {
     write(ad9154_reg::LMFC_DELAY_1, 0);
     write(ad9154_reg::LMFC_VAR_0, 0x0a); // receive buffer delay
     write(ad9154_reg::LMFC_VAR_1, 0x0a);
+    write(ad9154_reg::SYNC_CONTROL, 0x9*ad9154_reg::SYNCMODE);
     write(ad9154_reg::SYNC_ERRWINDOW, 0); // +- 1/2 DAC clock
-    // datasheet seems to say ENABLE and ARM should be separate steps,
-    // so enable now so it can be armed in dac_sync().
-    write(ad9154_reg::SYNC_CONTROL,
-        0x1*ad9154_reg::SYNCMODE | 1*ad9154_reg::SYNCENABLE |
-        0*ad9154_reg::SYNCARM | 0*ad9154_reg::SYNCCLRSTKY);
 
     write(ad9154_reg::XBAR_LN_0_1,
             0*ad9154_reg::LOGICAL_LANE0_SRC | 1*ad9154_reg::LOGICAL_LANE1_SRC);
@@ -683,26 +679,25 @@ fn dac_cfg_and_test_retry(dacno: u8) -> Result<(), &'static str> {
     }
 }
 
-pub fn dac_sync(dacno: u8) -> Result<bool, &'static str> {
+pub fn dac_arm_sync(dacno: u8) {
+    spi_setup(dacno);
+    write(ad9154_reg::SYNC_CONTROL,
+        0x9*ad9154_reg::SYNCMODE | 0*ad9154_reg::SYNCENABLE);
+    clock::spin_us(1000);
+    write(ad9154_reg::SYNC_CONTROL,
+        0x9*ad9154_reg::SYNCMODE | 1*ad9154_reg::SYNCENABLE);
+    clock::spin_us(1000);
+    write(ad9154_reg::SYNC_CONTROL,
+        0x9*ad9154_reg::SYNCMODE | 1*ad9154_reg::SYNCENABLE |
+        1*ad9154_reg::SYNCARM);
+}
+
+pub fn check_dac_sync(dacno: u8) -> u32 {
     spi_setup(dacno);
 
-    write(ad9154_reg::SYNC_CONTROL,
-        0x1*ad9154_reg::SYNCMODE | 1*ad9154_reg::SYNCENABLE |
-        1*ad9154_reg::SYNCARM | 1*ad9154_reg::SYNCCLRSTKY);
-    clock::spin_us(1000); // ensure at least one sysref edge
-    let sync_status = read(ad9154_reg::SYNC_STATUS);
-
-    if sync_status & ad9154_reg::SYNC_BUSY != 0 {
-        return Err("sync logic busy");
-    }
-    if sync_status & ad9154_reg::SYNC_LOCK == 0 {
-        return Err("no sync lock");
-    }
-    if sync_status & ad9154_reg::SYNC_TRIP == 0 {
-        return Err("no sysref edge");
-    }
-    let realign_occured = sync_status & ad9154_reg::SYNC_ROTATE != 0;
-    Ok(realign_occured)
+    let err_l = read(ad9154_reg::SYNC_CURRERR_L) as u32;
+    let err_h = 0x1 & read(ad9154_reg::SYNC_CURRERR_H) as u32;
+    return err_l + (err_h << 8)
 }
 
 fn init_dac(dacno: u8) -> Result<(), &'static str> {

@@ -28,14 +28,15 @@ class UltrascaleCRG(Module, AutoCSR):
         self.refclk_freq = int(refclk_freq)
         self.fabric_freq = int(fabric_freq)
 
-        sysref_freq = gcd(fabric_freq, sample_rate * ts.s / (ts.k * ts.f))
-        sysref_div = int(fabric_freq/sysref_freq)
+        sysref_freq = sample_rate / (2 * ts.k * ts.s) # check factor of 2!
+        sysref_div = int(refclk_freq/sysref_freq)
 
         self.ibuf_disable = CSRStorage(reset=1)
         self.jreset = CSRStorage(reset=1)
         self.sysref_out_en = CSRStorage(reset=0)
 
-        sysref_ctr = Signal(sysref_div)
+        self.sysref_ctr = Signal(4)
+        # sysref_ctr = Signal(max=sysref_div-1)
         self.sysref = Signal()
         sysref_out = Signal(reset_less=True)
         sysref_out_en = Signal(reset_less=True)
@@ -60,11 +61,13 @@ class UltrascaleCRG(Module, AutoCSR):
             self.specials += Instance("BUFG_GT", i_I=refclk2,
                                       o_O=self.cd_jesd.clk)
 
-        self.specials += MultiReg(sysref_out_en, self.sysref_out_en.storage)
-        self.sync.rtio += If(sysref_ctr[-1] == 1, sysref_ctr.eq(1)).Else(
-            sysref_ctr.eq(sysref_ctr << 1))
-        self.comb += self.sysref.eq(sysref_ctr[0])
-        self.sync.rtio += sysref_out.eq(self.sysref & sysref_out_en)
+        # self.specials += MultiReg(self.sysref_out_en.storage, sysref_out_en)
+        # self.sync.rtio += [
+        #     sysref_ctr.eq(sysref_ctr-1),
+        #     If(self.sysref, sysref_ctr.eq(sysref_div-1))
+        # ]
+        self.comb += self.sysref.eq(self.sysref_ctr == 0)
+        self.sync.rtio += sysref_out.eq(self.sysref)
 
         pads = platform.request("sma_io", 0)
         self.comb += pads.level.eq(sysref_out)
