@@ -5,6 +5,7 @@ import os
 import warnings
 
 from migen import *
+from migen.genlib.io import DifferentialInput
 
 from misoc.cores import gpio
 from misoc.integration.soc_sdram import soc_sdram_args, soc_sdram_argdict
@@ -138,6 +139,14 @@ class Standalone(MiniSoC, AMPSoC, RTMCommon):
 
         platform = self.platform
 
+        clk_pads = platform.request("sysclk1_300")
+        clk_se = Signal()
+        self.specials += DifferentialInput(clk_pads.p, clk_pads.n, clk_se)
+        self.platform.add_period_constraint(clk_pads.p, 1e9/int(150e6))
+        self.clock_domains.cd_rtio = ClockDomain()
+        self.specials += Instance("BUFG", i_I=clk_se, o_O=self.cd_rtio.clk)
+        self.comb += self.cd_rtio.rst.eq(ResetSignal("jesd"))
+
         self.submodules.si5324_rst_n = gpio.GPIOOut(platform.request("si5324").rst_n)
         self.csr_devices.append("si5324_rst_n")
         i2c = self.platform.request("i2c")
@@ -168,12 +177,12 @@ class Standalone(MiniSoC, AMPSoC, RTMCommon):
 
         self.submodules.ad9154_crg = jesd204_tools.UltrascaleCRG(
             platform, sample_rate=600e6, fabric_freq=125e6,
-            refclk_freq=150e6, use_rtio_clock=False)
+            refclk_freq=150e6, use_rtio_clock=True)
 
         self.submodules.ad9154_jesd_0 = jesd204_tools.UltrascaleTX(
-            platform, sys_crg=self.crg, jesd_crg=self.ad9154_crg, dac=0)
+            platform, sys_crg=self.crg, jesd_crg=self.ad9154_crg, dac=0, rtio_clk=self.cd_rtio.clk)
         self.submodules.ad9154_jesd_1 = jesd204_tools.UltrascaleTX(
-            platform, sys_crg=self.crg, jesd_crg=self.ad9154_crg, dac=1)
+            platform, sys_crg=self.crg, jesd_crg=self.ad9154_crg, dac=1, rtio_clk=self.cd_rtio.clk)
 
         if with_sawg:
             cls = AD9154
@@ -199,11 +208,6 @@ class Standalone(MiniSoC, AMPSoC, RTMCommon):
         self.config["RTIO_LOG_CHANNEL"] = len(rtio_channels)
         rtio_channels.append(rtio.LogChannel())
 
-        self.clock_domains.cd_rtio = ClockDomain()
-        self.comb += [
-            self.cd_rtio.clk.eq(ClockSignal("jesd")),
-            self.cd_rtio.rst.eq(ResetSignal("jesd"))
-        ]
         self.submodules.rtio_core = rtio.Core(rtio_channels)
         self.csr_devices.append("rtio_core")
         self.submodules.rtio = rtio.KernelInitiator()

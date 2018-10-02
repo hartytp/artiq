@@ -78,7 +78,7 @@ PhyPads = namedtuple("PhyPads", "txp txn")
 
 
 class UltrascaleTX(Module, AutoCSR):
-    def __init__(self, platform, sys_crg, jesd_crg, dac):
+    def __init__(self, platform, sys_crg, jesd_crg, dac, rtio_clk):
 
         jesd_pads = platform.request("dac_jesd", dac)
         phys = []
@@ -93,7 +93,7 @@ class UltrascaleTX(Module, AutoCSR):
                                            40*1e9/jesd_crg.linerate)
             platform.add_false_path_constraints(
                 sys_crg.cd_sys.clk,
-                jesd_crg.cd_jesd.clk,
+                rtio_clk,
                 phy.transmitter.cd_tx.clk)
             phys.append(phy)
 
