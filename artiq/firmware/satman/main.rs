@@ -377,11 +377,6 @@ const SI5324_SETTINGS: si5324::FrequencySettings
     crystal_ref: true
 };
 
-fn drtio_link_rx_up() -> bool {
-    unsafe {
-        (csr::DRTIO[0].rx_up_read)() == 1
-    }
-}
 
 const SIPHASER_PHASE: u16 = 32;
 
