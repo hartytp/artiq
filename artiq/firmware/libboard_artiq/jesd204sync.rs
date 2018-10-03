@@ -10,68 +10,63 @@ fn sysref_cal_dac(dacno: u8) -> Result<u16, &'static str> {
     let mut dmin = d;
     let mut dmax = d;
 
-    for sync_attempt in 0..100 {    
+    dmin = d;
+    dmax = d;
+    delay_line::set_delay(0, d);
+    delay_line::set_delay(1, d);
+    clock::spin_us(10000);
+    ad9154::dac_arm_sync(dacno);
 
-        dmin = d;
-        dmax = d;
-        delay_line::set_delay(0, d);
-        delay_line::set_delay(1, d);
-        clock::spin_us(10000);
-        ad9154::dac_arm_sync(dacno);
+    // measure negative margin
+    loop {
+        delay_line::set_delay(0, dmin);
+        delay_line::set_delay(1, dmin);
+        clock::spin_us(1000);
 
-        // measure negative margin
-        loop {
-            delay_line::set_delay(0, dmin);
-            delay_line::set_delay(1, dmin);
-            clock::spin_us(1000);
-
-            let mut synchronised = true;
-            for _ in 0..50 {
-                if ad9154::check_dac_sync(dacno) != 0 {
-                    synchronised = false;
-                    break;
-                }
+        let mut synchronised = true;
+        for _ in 0..50 {
+            if ad9154::check_dac_sync(dacno) != 0 {
+                synchronised = false;
+                break;
             }
-            if !synchronised { break; }
-            dmin -= 1;
         }
-
-        // measure positive margin
-        loop {
-            delay_line::set_delay(0, dmax);
-            delay_line::set_delay(1, dmax);
-            clock::spin_us(1000);
-
-            let mut synchronised = true;
-            for _ in 0..50 {
-                if ad9154::check_dac_sync(dacno) != 0 {
-                    synchronised = false;
-                    break;
-                }
-            }
-            if !synchronised { break; }
-            dmax += 1;
-        }
-
-        if dmax - dmin > 10 {
-            delay_line::set_delay(dacno, d);
-            println!("success - dmin={}, dmax={}", dmin, dmax);
-
-            info!("validation eye scan...");
-            for delay in (dmin-10)..(dmax+10) {
-                delay_line::set_delay(dacno, delay);
-                print!("{}:", delay);
-                for _ in 0..50 { print!(" {}", ad9154::check_dac_sync(dacno)); }
-                print!("\n");
-            }              
-
-            return Ok(d);
-        }
-    println!("attempt {} failed - dmin={}, dmax={}", sync_attempt, dmin, dmax);
+        if !synchronised { break; }
+        dmin -= 1;
     }
-    // this does happen sometimes. No idea why. Try a full-on DAC restart???
-    // fwiw running artiq_flash -t sayma start does resolve the issue...sigh...
-    Err("failed to align sysref")
+
+    // measure positive margin
+    loop {
+        delay_line::set_delay(0, dmax);
+        delay_line::set_delay(1, dmax);
+        clock::spin_us(1000);
+
+        let mut synchronised = true;
+        for _ in 0..50 {
+            if ad9154::check_dac_sync(dacno) != 0 {
+                synchronised = false;
+                break;
+            }
+        }
+        if !synchronised { break; }
+        dmax += 1;
+    }
+
+    if dmax - dmin > 10 {
+        delay_line::set_delay(dacno, d);
+        println!("success - dmin={}, dmax={}", dmin, dmax);
+
+        info!("validation eye scan...");
+        for delay in (dmin-10)..(dmax+10) {
+            delay_line::set_delay(dacno, delay);
+            print!("{}:", delay);
+            for _ in 0..50 { print!(" {}", ad9154::check_dac_sync(dacno)); }
+            print!("\n");
+        }              
+
+        return Ok(d);
+    }
+    println!("failed - dmin={}, dmax={}", dmin, dmax);
+    loop { }
 }
 
 pub fn sysref_auto_dac_align() -> Result<(), &'static str> {
