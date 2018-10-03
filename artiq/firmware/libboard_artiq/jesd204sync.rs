@@ -54,7 +54,6 @@ fn sysref_cal_dac(dacno: u8) -> Result<u16, &'static str> {
     if dmax - dmin > 10 {
         delay_line::set_delay(dacno, d);
         println!("success - dmin={}, dmax={}", dmin, dmax);
-
         info!("validation eye scan...");
         for delay in (dmin-10)..(dmax+10) {
             delay_line::set_delay(dacno, delay);
@@ -66,7 +65,10 @@ fn sysref_cal_dac(dacno: u8) -> Result<u16, &'static str> {
         return Ok(d);
     }
     println!("failed - dmin={}, dmax={}", dmin, dmax);
-    loop { }
+    //loop { } 
+    // this does happen sometimes. No idea why. Try a full-on DAC restart???
+    // fwiw running artiq_flash -t sayma start does resolve the issue...sigh...
+    Err("failed to align sysref")
 }
 
 pub fn sysref_auto_dac_align() -> Result<(), &'static str> {

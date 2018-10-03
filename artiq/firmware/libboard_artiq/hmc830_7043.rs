@@ -156,7 +156,7 @@ pub mod hmc7043 {
     use board_misoc::{csr, clock};
 
     // All frequencies assume 2.4GHz HMC830 output
-    const DAC_CLK_DIV: u16 = 1;               // 2.4GHz
+    const DAC_CLK_DIV: u16 = 4;               // 2.4GHz
     const FPGA_CLK_DIV: u16 = 16;              // 150MHz
     const SYSREF_DIV: u16 = 256;              // 9.375MHz
     const HMC_SYSREF_DIV: u16 = SYSREF_DIV*8; // 1.171875MHz (must be <= 4MHz)
