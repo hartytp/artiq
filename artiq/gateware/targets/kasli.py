@@ -150,6 +150,9 @@ class PLLTest(_StandaloneBase):
     ADF4356 tester
     """
     def __init__(self, hw_rev=None, **kwargs):
+
+        self.platform.device = "xc7a100t-fgg484-3"
+
         if hw_rev is None:
             hw_rev = "v1.1"
         _StandaloneBase.__init__(self, hw_rev=hw_rev, **kwargs)
