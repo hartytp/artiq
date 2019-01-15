@@ -145,6 +145,36 @@ class _StandaloneBase(MiniSoC, AMPSoC):
         self.csr_devices.append("rtio_analyzer")
 
 
+class PLLTest(_StandaloneBase):
+    """
+    ADF4356 tester
+    """
+    def __init__(self, hw_rev=None, **kwargs):
+        if hw_rev is None:
+            hw_rev = "v1.1"
+        _StandaloneBase.__init__(self, hw_rev=hw_rev, **kwargs)
+
+        self.config["SI5324_AS_SYNTHESIZER"] = None
+        self.config["SI5324_EXT_REF"] = None
+        self.config["RTIO_FREQUENCY"] = "125.0"
+
+        self.rtio_channels = []
+
+        eem.ADF4356.add_std(self, 0)
+
+        for i in (1, 2):
+            sfp_ctl = self.platform.request("sfp_ctl", i)
+            phy = ttl_simple.Output(sfp_ctl.led)
+            self.submodules += phy
+            self.rtio_channels.append(rtio.Channel.from_phy(phy))
+
+        self.config["HAS_RTIO_LOG"] = None
+        self.config["RTIO_LOG_CHANNEL"] = len(self.rtio_channels)
+        self.rtio_channels.append(rtio.LogChannel())
+
+        self.add_rtio(self.rtio_channels)
+
+
 class Opticlock(_StandaloneBase):
     """
     Opticlock extension variant configuration
@@ -1193,7 +1223,7 @@ class VLBAISatellite(_SatelliteBase):
 VARIANTS = {cls.__name__.lower(): cls for cls in [
     Opticlock, SUServo, PTB, PTB2, HUB, LUH,
     SYSU, MITLL, MITLL2, USTC, Tsinghua, Tsinghua2, WIPM, NUDT,
-    VLBAIMaster, VLBAISatellite, Tester, Master, Satellite]}
+    VLBAIMaster, VLBAISatellite, Tester, Master, Satellite, PLLTest]}
 
 
 def main():

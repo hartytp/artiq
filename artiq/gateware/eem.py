@@ -6,7 +6,7 @@ from artiq.gateware import rtio
 from artiq.gateware.rtio.phy import spi2, ad53xx_monitor, grabber
 from artiq.gateware.suservo import servo, pads as servo_pads
 from artiq.gateware.rtio.phy import servo as rtservo
-
+from artiq.gateware.rtio.phy import ttl_simple
 
 def _eem_signal(i):
     n = "d{}".format(i)
@@ -51,6 +51,58 @@ class DIO(_EEM):
             phy = ttl47_cls(pads.p, pads.n)
             target.submodules += phy
             target.rtio_channels.append(rtio.Channel.from_phy(phy))
+
+
+class ADF4356(_EEM):
+    @staticmethod
+    def io(eem, iostandard="LVDS_25"):
+        ios = [
+            ("adf4356{}_spi_p".format(eem), 0,
+                Subsignal("clk", Pins(_eem_pin(eem, 0, "p"))),
+                Subsignal("mosi", Pins(_eem_pin(eem, 1, "p"))),
+                Subsignal("miso", Pins(_eem_pin(eem, 2, "p"))),
+                Subsignal("cs_n", Pins(_eem_pin(eem, 3, "p"))),
+                IOStandard(iostandard),
+            ),
+            ("adf4356{}_spi_n".format(eem), 0,
+                Subsignal("clk", Pins(_eem_pin(eem, 0, "n"))),
+                Subsignal("mosi", Pins(_eem_pin(eem, 1, "n"))),
+                Subsignal("miso", Pins(_eem_pin(eem, 2, "n"))),
+                Subsignal("cs_n", Pins(_eem_pin(eem, 3, "n"))),
+                IOStandard(iostandard),
+            ),
+        ]
+        ttls = [(4, eem, "le"),
+                (5, eem, "muxout")]
+
+        for i, j, sig in ttls:
+            ios.append(
+                ("adf4356{}_{}".format(eem, sig), 0,
+                    Subsignal("p", Pins(_eem_pin(j, i, "p"))),
+                    Subsignal("n", Pins(_eem_pin(j, i, "n"))),
+                    IOStandard(iostandard)
+                ))
+
+        return ios
+
+    @classmethod
+    def add_std(cls, target, eem, iostandard="LVDS_25"):
+        cls.add_extension(target, eem, iostandard=iostandard)
+
+        phy = spi2.SPIMaster(target.platform.request("adf4356{}_spi_p".format(eem)),
+            target.platform.request("adf4356{}_spi_n".format(eem)))
+        target.submodules += phy
+        target.rtio_channels.append(rtio.Channel.from_phy(phy, ififo_depth=4))
+
+        pads = target.platform.request("adf4356{}_muxout".format(eem))
+        phy = ttl_simple.Input(pads.p, pads.n)
+        target.submodules += phy
+        target.rtio_channels.append(rtio.Channel.from_phy(phy))
+
+        pads = target.platform.request("adf4356{}_le".format(eem))
+        phy = ttl_simple.Output(pads.p, pads.n)
+        target.submodules += phy
+        target.rtio_channels.append(rtio.Channel.from_phy(phy))
 
 
 class Urukul(_EEM):
