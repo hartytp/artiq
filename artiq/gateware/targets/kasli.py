@@ -151,11 +151,11 @@ class PLLTest(_StandaloneBase):
     """
     def __init__(self, hw_rev=None, **kwargs):
 
-        self.platform.device = "xc7a100t-fgg484-3"
-
         if hw_rev is None:
             hw_rev = "v1.1"
         _StandaloneBase.__init__(self, hw_rev=hw_rev, **kwargs)
+
+        self.platform.device = "xc7a100t-fgg484-3"
 
         self.config["SI5324_AS_SYNTHESIZER"] = None
         self.config["SI5324_EXT_REF"] = None
