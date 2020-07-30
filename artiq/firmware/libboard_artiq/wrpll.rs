@@ -180,6 +180,20 @@ mod si549 {
     #[cfg(soc_platform = "kasli")]
     pub const ADDRESS: u8 = 0x67;
 
+    // to do: load from gateware config
+    const DDMTD_COUNTER_N: u32 = 16;
+    const DDMTD_COUNTER_MAX: u32 = (1 << DDMTD_COUNTER_N) - 1;
+    const F_SYS: f64 = csr::CONFIG_CLOCK_FREQUENCY as f64;
+    #[cfg(rtio_frequency = "125.0")]
+    const F_MAIN: f64 = 125.0e6;
+    const F_HELPER: f64 = F_MAIN * DDMTD_COUNTER_MAX as f64 / (DDMTD_COUNTER_MAX + 1) as f64;
+
+    fn ddmtd_tag_to_s(u16 mu) -> f32 {
+        const F_BEAT = F_MAIN - F_HELPER;
+        const TIME_STEP = (F_BEAT / DDMTD_COUNTER_MAX as f64) as f32;
+        return mu*TIME_STEP;
+    }
+
     pub fn write(dcxo: i2c::Dcxo, reg: u8, val: u8) -> Result<(), &'static str> {
         i2c::start(dcxo);
         if !i2c::write(dcxo, ADDRESS << 1) {
@@ -266,6 +280,9 @@ mod si549 {
         Ok(())
     }
 
+    // Si549 digital frequency trim ("all-digital PLL" register)
+    // ∆ f_out = adpll * 0.0001164e-6 (0.1164 ppb/lsb)
+    // max trim range is +- 950 ppm
     pub fn set_adpll(dcxo: i2c::Dcxo, adpll: i32) -> Result<(), &'static str> {
         write(dcxo, 231, adpll as u8)?;
         write(dcxo, 232, (adpll >> 8) as u8)?;
@@ -348,34 +365,27 @@ pub fn init() {
 }
 
 pub fn diagnostics() {
+    info!("WRPLL diagnostics...");
+    info!("Untrimmed oscillator frequencies:")
     log_frequencies();
 
-    info!("ADPLL test:");
-    // +/-10ppm
-    si549::set_adpll(i2c::Dcxo::Helper, -85911).expect("ADPLL write failed");
+    info!("Increase DCXO frequency by +10ppm (1.25kHz):")
+    si549::set_adpll(i2c::Dcxo::Helper, 85911).expect("ADPLL write failed");
     si549::set_adpll(i2c::Dcxo::Main, 85911).expect("ADPLL write failed");
+    // to do: add assert here to confrim behaviour?
     log_frequencies();
+
     si549::set_adpll(i2c::Dcxo::Helper, 0).expect("ADPLL write failed");
     si549::set_adpll(i2c::Dcxo::Main, 0).expect("ADPLL write failed");
-
-    let mut tags = [0; 10];
-    for i in 0..tags.len() {
-        tags[i] = get_ddmtd_main_tag();
-    }
-    info!("DDMTD main tags: {:?}", tags);
 }
 
 fn trim_dcxos(f_helper: u32, f_main: u32, f_cdr: u32) -> Result<(i32, i32), &'static str> {
+    info!("Trimming oscillator frequencies:")
     const DCXO_STEP: i64 = (1.0e6/0.0001164) as i64;
     const ADPLL_MAX: i64 = (950.0/0.0001164) as i64;
 
     const TIMER_WIDTH: u32 = 23;
     const COUNTER_DIV: u32 = 2;
-
-    const F_SYS: f64 = csr::CONFIG_CLOCK_FREQUENCY as f64;
-    #[cfg(rtio_frequency = "125.0")]
-    const F_MAIN: f64 = 125.0e6;
-    const F_HELPER: f64 = F_MAIN * ((1 << 15) as f64)/((1<<15) as f64 + 1.0);
 
     const SYS_COUNTS: i64 = (1 << (TIMER_WIDTH - COUNTER_DIV)) as i64;
     const EXP_MAIN_COUNTS: i64 = ((SYS_COUNTS as f64) * (F_MAIN/F_SYS)) as i64;
@@ -412,11 +422,61 @@ fn trim_dcxos(f_helper: u32, f_main: u32, f_cdr: u32) -> Result<(i32, i32), &'st
     Ok((helper_adpll as i32, main_adpll as i32))
 }
 
+// time per bin, max time diff
+fn unwrap(input: &[u16], output: &mut [i32]) {
+    const THRESH: i32 = (DDMTD_COUNTER_MAX >> 1) as i32 - 1;
+    let mut offset: i32 = 0;
+    output[0] = input[0] as i32;
+
+    for i in 1..input.len() {
+        if (input[i] as i32 - input[i-1] as i32) > THRESH{
+            offset -= DDMTD_COUNTER_MAX as i32 + 1;
+        }
+        else if (input[i] as i32 - input[i-1] as i32) < -THRESH{
+            offset += DDMTD_COUNTER_MAX as i32 + 1;
+        }
+        output[i] = input[i] as i32 + offset;
+    }
+}
+
+fn statistics(data: &[u16]) -> (f32, f32) {
+    let sum = data.iter().fold(0 as u32, |acc, x| acc + *x as u32);
+    let mean = sum as f32 / data.len() as f32;
+
+    let squared_sum = data.iter().fold(0 as u32, |acc, x| acc + (*x as u32).pow(2));
+    let variance = (squared_sum as f32 / data.len() as f32) - mean;
+    return (mean, variance)
+}
+
 fn select_recovered_clock_int(rc: bool) -> Result<(), &'static str> {
+    info!("Untrimmed oscillator frequencies:")
     let (f_helper, f_main, f_cdr) = log_frequencies();
     if rc {
         let (helper_adpll, main_adpll) = trim_dcxos(f_helper, f_main, f_cdr)?;
+        // to do: add assertion on max frequency shift here?
         si549::set_adpll(i2c::Dcxo::Helper, helper_adpll).expect("ADPLL write failed");
+        si549::set_adpll(i2c::Dcxo::Main, main_adpll).expect("ADPLL write failed");
+
+        let mut tags = [0; 100];
+        let mut unwrpped = [0; 100];
+        for i in 0..tags.len() {
+            tags[i] = get_ddmtd_main_tag();
+        }
+        unwrap(&tags, &mut unwrapped);
+        info!("DDMTD main tags: {:?}", tags);
+        info!("DDMTD main tags: {:?}", unwrapped);
+        info!("time step: {:?}", ddmtd_tag_to_s(1));
+
+        info!("increasing main DCXO by 1ppm (125Hz):")
+        // Increase main DCXO frequency by +1ppm (125Hz)
+        si549::set_adpll(i2c::Dcxo::Main, main_adpll + 8591).expect("ADPLL write failed");
+        for i in 0..tags.len() {
+            tags[i] = get_ddmtd_main_tag();
+        }
+        unwrap(&tags, &mut unwrapped);
+        info!("DDMTD main tags: {:?}", tags);
+        info!("DDMTD main tags: {:?}", unwrapped);
+        info!("time step: {:?}", ddmtd_tag_to_s(1));
         si549::set_adpll(i2c::Dcxo::Main, main_adpll).expect("ADPLL write failed");
 
         unsafe {
