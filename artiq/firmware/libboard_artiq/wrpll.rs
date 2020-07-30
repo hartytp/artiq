@@ -180,20 +180,6 @@ mod si549 {
     #[cfg(soc_platform = "kasli")]
     pub const ADDRESS: u8 = 0x67;
 
-    // to do: load from gateware config
-    const DDMTD_COUNTER_N: u32 = 16;
-    const DDMTD_COUNTER_MAX: u32 = (1 << DDMTD_COUNTER_N) - 1;
-    const F_SYS: f64 = csr::CONFIG_CLOCK_FREQUENCY as f64;
-    #[cfg(rtio_frequency = "125.0")]
-    const F_MAIN: f64 = 125.0e6;
-    const F_HELPER: f64 = F_MAIN * DDMTD_COUNTER_MAX as f64 / (DDMTD_COUNTER_MAX + 1) as f64;
-
-    fn ddmtd_tag_to_s(u16 mu) -> f32 {
-        const F_BEAT = F_MAIN - F_HELPER;
-        const TIME_STEP = (F_BEAT / DDMTD_COUNTER_MAX as f64) as f32;
-        return mu*TIME_STEP;
-    }
-
     pub fn write(dcxo: i2c::Dcxo, reg: u8, val: u8) -> Result<(), &'static str> {
         i2c::start(dcxo);
         if !i2c::write(dcxo, ADDRESS << 1) {
@@ -299,6 +285,20 @@ mod si549 {
     }
 }
 
+// to do: load from gateware config
+const DDMTD_COUNTER_N: u32 = 16;
+const DDMTD_COUNTER_MAX: u32 = (1 << DDMTD_COUNTER_N) - 1;
+const F_SYS: f64 = csr::CONFIG_CLOCK_FREQUENCY as f64;
+#[cfg(rtio_frequency = "125.0")]
+const F_MAIN: f64 = 125.0e6;
+const F_HELPER: f64 = F_MAIN * DDMTD_COUNTER_MAX as f64 / (DDMTD_COUNTER_MAX + 1) as f64;
+
+fn ddmtd_tag_to_s(mu: u16) -> f32 {
+    const F_BEAT: f64 = F_MAIN - F_HELPER;
+    const TIME_STEP: f32 = (F_BEAT / DDMTD_COUNTER_MAX as f64) as f32;
+    return mu*TIME_STEP;
+}
+
 fn get_frequencies() -> (u32, u32, u32) {
     unsafe {
         csr::wrpll::frequency_counter_update_en_write(1);
@@ -366,10 +366,10 @@ pub fn init() {
 
 pub fn diagnostics() {
     info!("WRPLL diagnostics...");
-    info!("Untrimmed oscillator frequencies:")
+    info!("Untrimmed oscillator frequencies:");
     log_frequencies();
 
-    info!("Increase DCXO frequency by +10ppm (1.25kHz):")
+    info!("Increase DCXO frequency by +10ppm (1.25kHz):");
     si549::set_adpll(i2c::Dcxo::Helper, 85911).expect("ADPLL write failed");
     si549::set_adpll(i2c::Dcxo::Main, 85911).expect("ADPLL write failed");
     // to do: add assert here to confrim behaviour?
@@ -380,7 +380,7 @@ pub fn diagnostics() {
 }
 
 fn trim_dcxos(f_helper: u32, f_main: u32, f_cdr: u32) -> Result<(i32, i32), &'static str> {
-    info!("Trimming oscillator frequencies:")
+    info!("Trimming oscillator frequencies:");
     const DCXO_STEP: i64 = (1.0e6/0.0001164) as i64;
     const ADPLL_MAX: i64 = (950.0/0.0001164) as i64;
 
@@ -449,7 +449,7 @@ fn statistics(data: &[u16]) -> (f32, f32) {
 }
 
 fn select_recovered_clock_int(rc: bool) -> Result<(), &'static str> {
-    info!("Untrimmed oscillator frequencies:")
+    info!("Untrimmed oscillator frequencies:");
     let (f_helper, f_main, f_cdr) = log_frequencies();
     if rc {
         let (helper_adpll, main_adpll) = trim_dcxos(f_helper, f_main, f_cdr)?;
