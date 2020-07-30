@@ -286,7 +286,7 @@ mod si549 {
 }
 
 // to do: load from gateware config
-const DDMTD_COUNTER_N: u32 = 16;
+const DDMTD_COUNTER_N: u32 = 15;
 const DDMTD_COUNTER_MAX: u32 = (1 << DDMTD_COUNTER_N) - 1;
 const F_SYS: f64 = csr::CONFIG_CLOCK_FREQUENCY as f64;
 #[cfg(rtio_frequency = "125.0")]
@@ -294,8 +294,11 @@ const F_MAIN: f64 = 125.0e6;
 const F_HELPER: f64 = F_MAIN * DDMTD_COUNTER_MAX as f64 / (DDMTD_COUNTER_MAX + 1) as f64;
 
 fn ddmtd_tag_to_s(mu: u16) -> f32 {
-    const F_BEAT: f64 = F_MAIN - F_HELPER;
-    const TIME_STEP: f32 = (F_BEAT / DDMTD_COUNTER_MAX as f64) as f32;
+    info!("F_MAIN {:?}", F_MAIN);
+    info!("F_HELPER {:?}", F_HELPER);
+    const TIME_STEP: f32 = 1./(F_MAIN * DDMTD_COUNTER_MAX as f64) as f32;
+    info!("COUNTER MAX {:?}", DDMTD_COUNTER_MAX);
+    info!("TIME STEP {:?} fs", TIME_STEP*1e12);
     return (mu as f32)*TIME_STEP;
 }
 
@@ -337,8 +340,17 @@ fn get_ddmtd_helper_tag() -> u16 {
     }
 }
 
+fn get_ddmtd_collector_tag() -> u16 {
+    unsafe {
+        csr::wrpll::collector_tag_arm_write(1);
+        while csr::wrpll::collector_tag_arm_read() != 0 {}
+        csr::wrpll::collector_tag_read()
+    }
+}
+
 pub fn init() {
-    info!("initializing...");
+    info!("initializing WR PLL...");
+    info!("Beat frequency is {:?} kHz", (F_MAIN-F_HELPER)/1e3);
 
     unsafe { csr::wrpll::helper_reset_write(1); }
 
@@ -456,26 +468,27 @@ fn select_recovered_clock_int(rc: bool) -> Result<(), &'static str> {
         // to do: add assertion on max frequency shift here?
         si549::set_adpll(i2c::Dcxo::Helper, helper_adpll).expect("ADPLL write failed");
         si549::set_adpll(i2c::Dcxo::Main, main_adpll).expect("ADPLL write failed");
+        log_frequencies();
 
-        let mut tags = [0; 100];
-        let mut unwrapped = [0; 100];
+        let mut tags = [0; 10];
+        let mut unwrapped = [0; 10];
         for i in 0..tags.len() {
-            tags[i] = get_ddmtd_main_tag();
+            tags[i] = get_ddmtd_collector_tag();
         }
         unwrap(&tags, &mut unwrapped);
-        info!("DDMTD main tags: {:?}", &tags);
-        info!("DDMTD main tags: {:?}", &unwrapped);
-        info!("time step: {:?}", ddmtd_tag_to_s(1));
+        info!("DDMTD main tags: {:?}", tags);
+        //info!("DDMTD main tags: {:?}", unwrapped);
+        //info!("time step: {:?}", ddmtd_tag_to_s(1));
 
         info!("increasing main DCXO by 1ppm (125Hz):");
         // Increase main DCXO frequency by +1ppm (125Hz)
         si549::set_adpll(i2c::Dcxo::Main, main_adpll + 8591).expect("ADPLL write failed");
         for i in 0..tags.len() {
-            tags[i] = get_ddmtd_main_tag();
+            tags[i] = get_ddmtd_collector_tag();
         }
         unwrap(&tags, &mut unwrapped);
-        info!("DDMTD main tags: {:?}", &tags);
-        info!("DDMTD main tags: {:?}", &unwrapped);
+        info!("DDMTD main tags: {:?}", tags);
+        info!("DDMTD main tags: {:?}", unwrapped);
         info!("time step: {:?}", ddmtd_tag_to_s(1));
         si549::set_adpll(i2c::Dcxo::Main, main_adpll).expect("ADPLL write failed");
 

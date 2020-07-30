@@ -137,6 +137,7 @@ class Collector(Module):
         self.tag_main_update = Signal()
 
         self.output = Signal((N + 1, True))
+        self.update = Signal()
 
         # # #
 
@@ -145,6 +146,7 @@ class Collector(Module):
 
         tag_collector = Signal((N + 1, True))
         fsm.act("IDLE",
+            NextValue(self.update, 0),
             If(self.tag_main_update & self.tag_helper_update,
                 NextValue(tag_collector, 0),
                 NextState("UPDATE")
@@ -186,5 +188,7 @@ class Collector(Module):
         )
         fsm.act("UPDATE",
             NextValue(self.output, tag_collector),
+            NextValue(self.update, 1),
             NextState("IDLE")
         )
+
