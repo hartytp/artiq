@@ -138,6 +138,10 @@ class Collector(Module):
 
         self.output = Signal((N + 1, True))
         self.update = Signal()
+        tag_main_buf = Signal((N, True))
+        tag_helper_buf = Signal((N, True))
+        self.output_main = Signal((N, True))
+        self.output_helper = Signal((N, True))
 
         # # #
 
@@ -148,24 +152,30 @@ class Collector(Module):
         fsm.act("IDLE",
             NextValue(self.update, 0),
             If(self.tag_main_update & self.tag_helper_update,
+                NextValue(tag_main_buf, self.tag_main),
+                NextValue(tag_helper_buf, self.tag_helper),
                 NextValue(tag_collector, 0),
                 NextState("UPDATE")
             ).Elif(self.tag_main_update,
+                NextValue(tag_main_buf, self.tag_main),
                 NextValue(tag_collector, self.tag_main),
                 NextState("WAITHELPER")
             ).Elif(self.tag_helper_update,
+                NextValue(tag_helper_buf, self.tag_helper),
                 NextValue(tag_collector, -self.tag_helper),
                 NextState("WAITMAIN")
             )
         )
         fsm.act("WAITHELPER",
             If(self.tag_helper_update,
+                NextValue(tag_helper_buf, self.tag_helper),
                 NextValue(tag_collector, tag_collector - self.tag_helper),
                 NextState("LEADCHECK")
             )
         )
         fsm.act("WAITMAIN",
             If(self.tag_main_update,
+                NextValue(tag_main_buf, self.tag_main),
                 NextValue(tag_collector, tag_collector + self.tag_main),
                 NextState("LAGCHECK")
             )
@@ -187,6 +197,8 @@ class Collector(Module):
             NextState("UPDATE")
         )
         fsm.act("UPDATE",
+            NextValue(self.output_main, tag_main_buf),
+            NextValue(self.output_helper, tag_helper_buf),
             NextValue(self.output, tag_collector),
             NextValue(self.update, 1),
             NextState("IDLE")

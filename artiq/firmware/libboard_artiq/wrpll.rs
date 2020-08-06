@@ -340,11 +340,14 @@ fn get_ddmtd_helper_tag() -> u16 {
     }
 }
 
-fn get_ddmtd_collector_tag() -> u16 {
+fn get_ddmtd_collector_tags() -> (u16, u16, u16) {
     unsafe {
         csr::wrpll::collector_tag_arm_write(1);
         while csr::wrpll::collector_tag_arm_read() != 0 {}
-        csr::wrpll::collector_tag_read()
+        let collector = csr::wrpll::collector_tag_read();
+        let main = csr::wrpll::collector_main_tag_read();
+        let helper = csr::wrpll::collector_helper_tag_read();
+        (collector, main, helper)
     }
 }
 
@@ -460,6 +463,22 @@ fn statistics(data: &[u16]) -> (f32, f32) {
     return (mean, variance)
 }
 
+fn print_tags() {
+    const NUM_TAGS: usize = 30;
+    let mut main_tags = [0; NUM_TAGS];
+    let mut helper_tags = [0; NUM_TAGS];
+    let mut collector_tags = [0; NUM_TAGS];
+    for i in 0..NUM_TAGS {
+        let (collector, main, helper) = get_ddmtd_collector_tags();
+        main_tags[i] =  main;
+        collector_tags[i] = collector;
+        helper_tags[i] = helper;
+    }
+    info!("DDMTD collector tags: {:?}", collector_tags);
+    info!("DDMTD main tags: {:?}", main_tags);
+    info!("DDMTD helper tags: {:?}", helper_tags);
+}
+
 fn select_recovered_clock_int(rc: bool) -> Result<(), &'static str> {
     info!("Untrimmed oscillator frequencies:");
     let (f_helper, f_main, f_cdr) = log_frequencies();
@@ -470,26 +489,13 @@ fn select_recovered_clock_int(rc: bool) -> Result<(), &'static str> {
         si549::set_adpll(i2c::Dcxo::Main, main_adpll).expect("ADPLL write failed");
         log_frequencies();
 
-        let mut tags = [0; 10];
-        let mut unwrapped = [0; 10];
-        for i in 0..tags.len() {
-            tags[i] = get_ddmtd_collector_tag();
-        }
-        unwrap(&tags, &mut unwrapped);
-        info!("DDMTD main tags: {:?}", tags);
-        //info!("DDMTD main tags: {:?}", unwrapped);
-        //info!("time step: {:?}", ddmtd_tag_to_s(1));
-
+        print_tags();
         info!("increasing main DCXO by 1ppm (125Hz):");
         // Increase main DCXO frequency by +1ppm (125Hz)
         si549::set_adpll(i2c::Dcxo::Main, main_adpll + 8591).expect("ADPLL write failed");
-        for i in 0..tags.len() {
-            tags[i] = get_ddmtd_collector_tag();
-        }
-        unwrap(&tags, &mut unwrapped);
-        info!("DDMTD main tags: {:?}", tags);
-        info!("DDMTD main tags: {:?}", unwrapped);
-        info!("time step: {:?}", ddmtd_tag_to_s(1));
+        clock::spin_us(100_000);
+        print_tags();
+ 
         si549::set_adpll(i2c::Dcxo::Main, main_adpll).expect("ADPLL write failed");
 
         unsafe {

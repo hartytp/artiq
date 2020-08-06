@@ -1,6 +1,6 @@
 from migen import *
 from migen.genlib.resetsync import AsyncResetSynchronizer
-from migen.genlib.cdc import MultiReg, PulseSynchronizer, BlindTransfer
+from migen.genlib.cdc import MultiReg, PulseSynchronizer
 from misoc.interconnect.csr import *
 
 from artiq.gateware.drtio.wrpll.si549 import Si549
@@ -54,8 +54,11 @@ class WRPLL(Module, AutoCSR):
         self.filter_reset = CSRStorage(reset=1)
         self.adpll_offset_helper = CSRStorage(24)
         self.adpll_offset_main = CSRStorage(24)
+
         self.collector_tag_arm = CSR()
         self.collector_tag = CSRStatus(N+1)
+        self.collector_main_tag = CSRStatus(N)
+        self.collector_helper_tag = CSRStatus(N)
 
         self.clock_domains.cd_helper = ClockDomain()
         self.clock_domains.cd_filter = ClockDomain()
@@ -97,20 +100,29 @@ class WRPLL(Module, AutoCSR):
             self.collector.tag_main_update.eq(self.ddmtd_main.h_tag_update)
         ]
 
-        collector_update_ps = BlindTransfer("helper", "sys")
+        collector_update_ps = PulseSynchronizer("helper", "sys")
         self.submodules += collector_update_ps
-        collector_update_ps.i.eq(collector_update)
+        self.sync.helper += collector_update_ps.i.eq(self.collector.update)
         collector_update_sys = Signal()
         self.sync += collector_update_sys.eq(collector_update_ps.o)
 
-        collector_tag_sys = Signal(N+1)
+        collector_tag_sys = Signal((N+1, True))
+        collector_main_tag_sys = Signal((N, True))
+        collector_helper_tag_sys = Signal((N, True))
         self.specials += MultiReg(self.collector.output, collector_tag_sys)
+        self.specials += MultiReg(self.collector.output_main, collector_main_tag_sys)
+        self.specials += MultiReg(self.collector.output_helper, collector_helper_tag_sys)
 
         self.sync += [
             If(self.collector_tag_arm.re & self.collector_tag_arm.r, self.collector_tag_arm.w.eq(1)),
             If(collector_update_sys,
                self.collector_tag_arm.w.eq(0),
-               If(self.collector_tag_arm.w, self.collector_tag.status.eq(collector_tag_sys)))
+               If(self.collector_tag_arm.w,
+                  self.collector_tag.status.eq(collector_tag_sys),
+                  self.collector_main_tag.status.eq(collector_main_tag_sys),
+                  self.collector_helper_tag.status.eq(collector_helper_tag_sys)
+                 )
+              )
         ]
 
         # compensate the 1 cycle latency of the collector
