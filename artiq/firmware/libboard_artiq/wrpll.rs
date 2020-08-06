@@ -340,11 +340,11 @@ fn get_ddmtd_helper_tag() -> u16 {
     }
 }
 
-fn get_ddmtd_collector_tags() -> (u16, u16, u16) {
+fn get_ddmtd_collector_tags() -> (i32, u16, u16) {
     unsafe {
         csr::wrpll::collector_tag_arm_write(1);
         while csr::wrpll::collector_tag_arm_read() != 0 {}
-        let collector = csr::wrpll::collector_tag_read();
+        let collector = csr::wrpll::collector_tag_read() as i32;
         let main = csr::wrpll::collector_main_tag_read();
         let helper = csr::wrpll::collector_helper_tag_read();
         (collector, main, helper)
@@ -356,13 +356,16 @@ fn print_tags() {
     let mut main_tags = [0; NUM_TAGS];
     let mut helper_tags = [0; NUM_TAGS];
     let mut collector_tags = [0; NUM_TAGS];
+    let mut collector_tags_u = [0 as i32; NUM_TAGS];
     for i in 0..NUM_TAGS {
         let (collector, main, helper) = get_ddmtd_collector_tags();
         main_tags[i] =  main;
         collector_tags[i] = collector;
         helper_tags[i] = helper;
     }
+    unwrap(&collector_tags, &mut collector_tags_u);
     info!("DDMTD collector tags: {:?}", collector_tags);
+    info!("DDMTD collector tags unwrapped: {:?}", collector_tags_u);
     info!("DDMTD main tags: {:?}", main_tags);
     info!("DDMTD helper tags: {:?}", helper_tags);
 
@@ -460,16 +463,16 @@ fn trim_dcxos(f_helper: u32, f_main: u32, f_cdr: u32) -> Result<(i32, i32), &'st
 }
 
 // time per bin, max time diff
-fn unwrap(input: &[u16], output: &mut [i32]) {
-    const THRESH: i32 = (DDMTD_COUNTER_MAX >> 1) as i32 - 1;
+fn unwrap(input: &[i32], output: &mut [i32]) {
+    const THRESH: i32 = 1 << (DDMTD_COUNTER_N-1);
     let mut offset: i32 = 0;
     output[0] = input[0] as i32;
 
     for i in 1..input.len() {
-        if (input[i] as i32 - input[i-1] as i32) > THRESH{
+        if (input[i] as i32 - input[i-1] as i32) > THRESH {
             offset -= DDMTD_COUNTER_MAX as i32 + 1;
         }
-        else if (input[i] as i32 - input[i-1] as i32) < -THRESH{
+        else if (input[i] as i32 - input[i-1] as i32) < -THRESH {
             offset += DDMTD_COUNTER_MAX as i32 + 1;
         }
         output[i] = input[i] as i32 + offset;

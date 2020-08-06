@@ -83,7 +83,7 @@ class DDMTDDeglitcherFirstEdge(Module):
         blind_counter = Signal(max=blind_period)
         self.sync.helper += [
             If(blind_counter != 0, blind_counter.eq(blind_counter - 1)),
-            If(rising, blind_counter.eq(blind_period - 1)),
+            If(input_signal_r, blind_counter.eq(blind_period - 1)),
             self.detect.eq(rising & (blind_counter == 0))
         ]
 
@@ -131,75 +131,53 @@ class DDMTD(Module, AutoCSR):
 
 class Collector(Module):
     def __init__(self, N):
-        self.tag_helper = Signal((N, True))
+        self.tag_helper = Signal(N)
         self.tag_helper_update = Signal()
-        self.tag_main = Signal((N, True))
+        self.tag_main = Signal(N)
         self.tag_main_update = Signal()
 
-        self.output = Signal((N + 1, True))
+        self.output = Signal((N + 2, True))
         self.update = Signal()
-        tag_main_buf = Signal((N, True))
-        tag_helper_buf = Signal((N, True))
-        self.output_main = Signal((N, True))
-        self.output_helper = Signal((N, True))
+        tag_main_r = Signal(N)
+        tag_helper_r = Signal(N)
+        self.output_main = Signal(N)
+        self.output_helper = Signal(N)
 
         # # #
 
         fsm = FSM(reset_state="IDLE")
         self.submodules += fsm
 
-        tag_collector = Signal((N + 1, True))
         fsm.act("IDLE",
             NextValue(self.update, 0),
             If(self.tag_main_update & self.tag_helper_update,
-                NextValue(tag_main_buf, self.tag_main),
-                NextValue(tag_helper_buf, self.tag_helper),
-                NextValue(tag_collector, 0),
+                NextValue(tag_main_r, self.tag_main),
+                NextValue(tag_helper_r, self.tag_helper),
                 NextState("UPDATE")
             ).Elif(self.tag_main_update,
-                NextValue(tag_main_buf, self.tag_main),
-                NextValue(tag_collector, self.tag_main),
+                NextValue(tag_main_r, self.tag_main),
                 NextState("WAITHELPER")
             ).Elif(self.tag_helper_update,
-                NextValue(tag_helper_buf, self.tag_helper),
-                NextValue(tag_collector, -self.tag_helper),
+                NextValue(tag_helper_r, self.tag_helper),
                 NextState("WAITMAIN")
             )
         )
         fsm.act("WAITHELPER",
             If(self.tag_helper_update,
-                NextValue(tag_helper_buf, self.tag_helper),
-                NextValue(tag_collector, tag_collector - self.tag_helper),
-                NextState("LEADCHECK")
+                NextValue(tag_helper_r, self.tag_helper),
+                NextState("UPDATE")
             )
         )
         fsm.act("WAITMAIN",
             If(self.tag_main_update,
-                NextValue(tag_main_buf, self.tag_main),
-                NextValue(tag_collector, tag_collector + self.tag_main),
-                NextState("LAGCHECK")
+                NextValue(tag_main_r, self.tag_main),
+                NextState("UPDATE")
             )
         )
-        # To compensate DDMTD counter roll-over when main is ahead of roll-over
-        # and helper is after roll-over
-        fsm.act("LEADCHECK",
-            If(tag_collector > 0,
-                NextValue(tag_collector, tag_collector - (2**N - 1))
-            ),
-            NextState("UPDATE")
-        )
-        # To compensate DDMTD counter roll-over when helper is ahead of roll-over
-        # and main is after roll-over
-        fsm.act("LAGCHECK",
-            If(tag_collector < 0,
-                NextValue(tag_collector, tag_collector + (2**N - 1))
-            ),
-            NextState("UPDATE")
-        )
         fsm.act("UPDATE",
-            NextValue(self.output_main, tag_main_buf),
-            NextValue(self.output_helper, tag_helper_buf),
-            NextValue(self.output, tag_collector),
+            NextValue(self.output_main, tag_main_r),
+            NextValue(self.output_helper, tag_helper_r),
+            NextValue(self.output, tag_main_r - tag_helper_r),
             NextValue(self.update, 1),
             NextState("IDLE")
         )

@@ -7,6 +7,12 @@ from artiq.gateware.drtio.wrpll.si549 import Si549
 from artiq.gateware.drtio.wrpll.ddmtd import DDMTD, Collector
 from artiq.gateware.drtio.wrpll import thls, filters
 
+def _eq_sign_extend(t, s):
+    """Assign target signal `t` from source `s`, sign-extending `s` to the
+    full width.
+    """
+    return t.eq(Cat(s, Replicate(s[-1], len(t) - len(s))))
+
 
 class FrequencyCounter(Module, AutoCSR):
     def __init__(self, timer_width=23, counter_width=23, domains=["helper", "rtio", "rtio_rx0"]):
@@ -56,7 +62,7 @@ class WRPLL(Module, AutoCSR):
         self.adpll_offset_main = CSRStorage(24)
 
         self.collector_tag_arm = CSR()
-        self.collector_tag = CSRStatus(N+1)
+        self.collector_tag = CSRStatus(32)
         self.collector_main_tag = CSRStatus(N)
         self.collector_helper_tag = CSRStatus(N)
 
@@ -106,9 +112,9 @@ class WRPLL(Module, AutoCSR):
         collector_update_sys = Signal()
         self.sync += collector_update_sys.eq(collector_update_ps.o)
 
-        collector_tag_sys = Signal((N+1, True))
-        collector_main_tag_sys = Signal((N, True))
-        collector_helper_tag_sys = Signal((N, True))
+        collector_tag_sys = Signal((N+2, True))
+        collector_main_tag_sys = Signal(N)
+        collector_helper_tag_sys = Signal(N)
         self.specials += MultiReg(self.collector.output, collector_tag_sys)
         self.specials += MultiReg(self.collector.output_main, collector_main_tag_sys)
         self.specials += MultiReg(self.collector.output_helper, collector_helper_tag_sys)
@@ -118,7 +124,7 @@ class WRPLL(Module, AutoCSR):
             If(collector_update_sys,
                self.collector_tag_arm.w.eq(0),
                If(self.collector_tag_arm.w,
-                  self.collector_tag.status.eq(collector_tag_sys),
+                  _eq_sign_extend(self.collector_tag.status, collector_tag_sys),
                   self.collector_main_tag.status.eq(collector_main_tag_sys),
                   self.collector_helper_tag.status.eq(collector_helper_tag_sys)
                  )
