@@ -351,6 +351,28 @@ fn get_ddmtd_collector_tags() -> (u16, u16, u16) {
     }
 }
 
+fn print_tags() {
+    const NUM_TAGS: usize = 30;
+    let mut main_tags = [0; NUM_TAGS];
+    let mut helper_tags = [0; NUM_TAGS];
+    let mut collector_tags = [0; NUM_TAGS];
+    for i in 0..NUM_TAGS {
+        let (collector, main, helper) = get_ddmtd_collector_tags();
+        main_tags[i] =  main;
+        collector_tags[i] = collector;
+        helper_tags[i] = helper;
+    }
+    info!("DDMTD collector tags: {:?}", collector_tags);
+    info!("DDMTD main tags: {:?}", main_tags);
+    info!("DDMTD helper tags: {:?}", helper_tags);
+
+    for i in 0..NUM_TAGS { 
+        helper_tags[i] = get_ddmtd_helper_tag();
+    }
+    info!("DDMTD helper tags: {:?}", helper_tags);
+   
+}
+
 pub fn init() {
     info!("initializing WR PLL...");
     info!("Beat frequency is {:?} kHz", (F_MAIN-F_HELPER)/1e3);
@@ -463,22 +485,6 @@ fn statistics(data: &[u16]) -> (f32, f32) {
     return (mean, variance)
 }
 
-fn print_tags() {
-    const NUM_TAGS: usize = 30;
-    let mut main_tags = [0; NUM_TAGS];
-    let mut helper_tags = [0; NUM_TAGS];
-    let mut collector_tags = [0; NUM_TAGS];
-    for i in 0..NUM_TAGS {
-        let (collector, main, helper) = get_ddmtd_collector_tags();
-        main_tags[i] =  main;
-        collector_tags[i] = collector;
-        helper_tags[i] = helper;
-    }
-    info!("DDMTD collector tags: {:?}", collector_tags);
-    info!("DDMTD main tags: {:?}", main_tags);
-    info!("DDMTD helper tags: {:?}", helper_tags);
-}
-
 fn select_recovered_clock_int(rc: bool) -> Result<(), &'static str> {
     info!("Untrimmed oscillator frequencies:");
     let (f_helper, f_main, f_cdr) = log_frequencies();
@@ -489,6 +495,7 @@ fn select_recovered_clock_int(rc: bool) -> Result<(), &'static str> {
         si549::set_adpll(i2c::Dcxo::Main, main_adpll).expect("ADPLL write failed");
         log_frequencies();
 
+	clock::spin_us(100_000);
         print_tags();
         info!("increasing main DCXO by 1ppm (125Hz):");
         // Increase main DCXO frequency by +1ppm (125Hz)
