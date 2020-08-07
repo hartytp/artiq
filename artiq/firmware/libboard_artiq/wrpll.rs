@@ -292,13 +292,10 @@ const F_SYS: f64 = csr::CONFIG_CLOCK_FREQUENCY as f64;
 #[cfg(rtio_frequency = "125.0")]
 const F_MAIN: f64 = 125.0e6;
 const F_HELPER: f64 = F_MAIN * DDMTD_COUNTER_MAX as f64 / (DDMTD_COUNTER_MAX + 1) as f64;
+const F_BEAT: f64 = F_MAIN - F_HELPER;
 
-fn ddmtd_tag_to_s(mu: u16) -> f32 {
-    info!("F_MAIN {:?}", F_MAIN);
-    info!("F_HELPER {:?}", F_HELPER);
+fn ddmtd_tag_to_s(mu: f32) -> f32 {
     const TIME_STEP: f32 = 1./(F_MAIN * DDMTD_COUNTER_MAX as f64) as f32;
-    info!("COUNTER MAX {:?}", DDMTD_COUNTER_MAX);
-    info!("TIME STEP {:?} fs", TIME_STEP*1e12);
     return (mu as f32)*TIME_STEP;
 }
 
@@ -357,6 +354,8 @@ fn print_tags() {
     let mut helper_tags = [0; NUM_TAGS];
     let mut collector_tags = [0; NUM_TAGS];
     let mut collector_tags_u = [0 as i32; NUM_TAGS];
+    let mut jitter = [0 as f32; NUM_TAGS];
+
     for i in 0..NUM_TAGS {
         let (collector, main, helper) = get_ddmtd_collector_tags();
         main_tags[i] =  main;
@@ -369,16 +368,24 @@ fn print_tags() {
     info!("DDMTD main tags: {:?}", main_tags);
     info!("DDMTD helper tags: {:?}", helper_tags);
 
-    for i in 0..NUM_TAGS { 
-        helper_tags[i] = get_ddmtd_helper_tag();
-    }
-    info!("DDMTD helper tags: {:?}", helper_tags);
-   
+    let t0 = collector_tags_u[0];
+    collector_tags_u.iter_mut().for_each(|x| *x -= t0);
+    let delta = collector_tags_u[collector_tags_u.len()-1] as f32 / (collector_tags_u.len()-1) as f32;
+    info!("detla: {:?} tags", delta);
+    let delta_f: f32 = delta/DDMTD_COUNTER_MAX as f32 * F_BEAT as f32;
+    info!("MAIN <-> CDR frequency difference: {:?} Hz ({:?} ppm)", delta_f, delta_f/F_HELPER as f32 * 1e6);
+
+    jitter.iter_mut().enumerate().for_each(|(i, x)| *x = collector_tags_u[i] as f32 - delta*(i as f32));
+    info!("jitter: {:?}", jitter);
+
+    let rms = jitter.iter().map(|x| x*x).fold(0 as f32, |acc, x| acc + x as f32) / NUM_TAGS as f32;
+    let rms_s = ddmtd_tag_to_s(rms);
+    info!("rms jitter: {:?} tags^2 ({:?} ps^2)", rms, rms_s*1e12);
 }
 
 pub fn init() {
     info!("initializing WR PLL...");
-    info!("Beat frequency is {:?} kHz", (F_MAIN-F_HELPER)/1e3);
+    info!("Beat frequency is {:?} kHz", F_BEAT/1e3);
 
     unsafe { csr::wrpll::helper_reset_write(1); }
 
