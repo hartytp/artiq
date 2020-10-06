@@ -94,7 +94,7 @@ class WRPLL(Module, AutoCSR):
         ]
 
         self.comb += [
-            self.filter_helper.input.eq(self.collector.out_helper),
+            self.filter_helper.input.eq(self.collector.out_helper << 22),
             self.filter_helper.input_stb.eq(self.collector.out_stb),
             self.filter_main.input.eq(self.collector.out_main),
             self.filter_main.input_stb.eq(self.collector.out_stb)
@@ -128,14 +128,15 @@ def helper_sim(N=15):
                 self.collector.tag_ref.eq(self.tag_ref),
                 self.collector.ref_stb.eq(self.input_stb),
                 self.collector.main_stb.eq(self.input_stb),
-                # self.loop_filter.input.eq(self.collector.out_helper),
-                # self.loop_filter.input_stb.eq(self.collector.out_stb),
+                self.loop_filter.input.eq(self.collector.out_helper << 22),
+                self.loop_filter.input_stb.eq(self.collector.out_stb),
                 self.adpll.eq(self.loop_filter.output),
                 self.out_stb.eq(self.loop_filter.output_stb),
             ]
     pll = WRPLL(N=N)
 
     # check filter against output from MatLab model
+    initial_helper_out = -8000
     ref_tags = np.array([
        24778, 16789,  8801,   814, 25596, 17612,  9628,  1646,
        26433, 18453, 10474,  2496, 27287, 19311, 11337,  3364, 28160,
@@ -164,7 +165,8 @@ def helper_sim(N=15):
 
     def sim():
 
-        for ref_tag, adpll in zip(ref_tags, adpll_sim):
+        yield pll.collector.out_helper.eq(initial_helper_out)
+        for ref_tag, adpll_matlab in zip(ref_tags, adpll_sim):
             # feed collector
             yield pll.tag_ref.eq(int(ref_tag))
             yield pll.input_stb.eq(1)
@@ -178,24 +180,14 @@ def helper_sim(N=15):
 
             tag_diff = yield pll.collector.out_helper
 
-            # BEGIN HACKS! FIX ME!
-            tag_diff -= 1
-            tag_diff -= 2**N
-
-            while (yield pll.loop_filter.busy):
-                yield
-
-            yield pll.loop_filter.input.eq(tag_diff << 22)
-            yield pll.loop_filter.input_stb.eq(1)
-            yield
-            yield pll.loop_filter.input_stb.eq(0)
-            # END HACKS!
-
             while not (yield pll.loop_filter.output_stb):
                 yield
 
-            filter_out = yield pll.loop_filter.output
-            assert filter_out == adpll
+            adpll_migen = yield pll.adpll
+            print("ref tag diff: {}, migen sim adpll {}, matlab adpll {}"
+                  .format(tag_diff, adpll_migen, adpll_matlab))
+
+            assert adpll_migen == adpll_matlab
             yield
 
     run_simulation(pll, [sim()])
