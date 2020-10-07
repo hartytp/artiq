@@ -96,9 +96,9 @@ class WRPLL(Module, AutoCSR):
         helper_cd = ClockDomainsRenamer("helper")
         self.submodules.collector = helper_cd(Collector(N))
         self.submodules.filter_helper = filter_cd(
-            thls.make(filters.helper, data_width=48))
+            thls.make(filters.helper, data_width=48, multiplier_stages=8))
         self.submodules.filter_main = filter_cd(
-            thls.make(filters.main, data_width=48))
+            thls.make(filters.main, data_width=48, multiplier_stages=8))
 
         self.comb += [
             self.collector.tag_ref.eq(self.ddmtd_ref.h_tag),
