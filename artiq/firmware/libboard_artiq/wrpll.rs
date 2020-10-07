@@ -291,7 +291,7 @@ const DDMTD_COUNTER_M: u32 = (1 << DDMTD_COUNTER_N);
 const F_SYS: f64 = csr::CONFIG_CLOCK_FREQUENCY as f64;
 
 const F_MAIN: f64 = 125.0e6;
-const F_HELPER: f64 = F_MAIN * DDMTD_COUNTER_M as f64 / (DDMTD_COUNTER_MAX + 1) as f64;
+const F_HELPER: f64 = F_MAIN * DDMTD_COUNTER_M as f64 / (DDMTD_COUNTER_M + 1) as f64;
 const F_BEAT: f64 = F_MAIN - F_HELPER;
 const TIME_STEP: f32 = 1./F_BEAT as f32;
 
@@ -328,8 +328,8 @@ fn get_tags() -> (i32, i32, u16, u16) {
 
         let main_diff = csr::wrpll::main_diff_tag_read() as i32;
         let helper_diff = csr::wrpll::helper_diff_tag_read() as i32;
-        let ref_tag = csr::wrpll::tag_ref_read();
-        let main_tag = csr::wrpll::tag_main_read();
+        let ref_tag = csr::wrpll::ref_tag_read();
+        let main_tag = csr::wrpll::main_tag_read();
         (main_diff, helper_diff, ref_tag, main_tag)
     }
 }
@@ -368,7 +368,7 @@ fn print_tags() {
     info!("jitter: {:?} tags", jitter);
 
     let var = jitter.iter().map(|x| x*x).fold(0 as f32, |acc, x| acc + x as f32) / NUM_TAGS as f32;
-    info!("variance: {:?} tags^2");
+    info!("variance: {:?} tags^2", var);
 }
 
 pub fn init() {
@@ -490,11 +490,12 @@ fn select_recovered_clock_int(rc: bool) -> Result<(), &'static str> {
 
         clock::spin_us(100_000);
 
-        let mut tags = [0; 10];
-        for i in 0..tags.len() {
-            tags[i] = get_ddmtd_helper_tag();
-        }
-        info!("DDMTD helper tags: {:?}", tags);
+        print_tags();
+//        let mut tags = [0; 10];
+//        for i in 0..tags.len() {
+//            tags[i] = get_ddmtd_helper_tag();
+//        }
+//        info!("DDMTD helper tags: {:?}", tags);
 
         unsafe {
             csr::wrpll::filter_reset_write(1);
