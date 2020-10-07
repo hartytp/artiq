@@ -6,6 +6,22 @@ from misoc.interconnect.csr import *
 
 
 class I2CClockGen(Module):
+    """ I2C clock generator.
+
+    clk2x is used as a clock  enable signal synchronous to the helper clock;
+    each edge of clk2x triggers a transition in SCL, leading to an I2C bus
+    frequency of: f_bus = f_helper/(2*f_clk2).
+
+    load sets the clock divider speed, with: f_clk2 = f_helper/(load+1)
+
+    The Si549 supports a max I2C bus frequency of 1MHz, corresponding to
+    load = 62.
+
+    The minimum bus speed is set by the DDMTD beat frequency, which must be
+    slower than the I2C transaction time. I2C transactions take ~96 clk2 ticks
+    (96*(load+1) helper ticks, compared with 2^N for the DDMTD counter). At
+    N=15, this means load must be less than 340.
+    """
     def __init__(self, width):
         self.load  = Signal(width)
         self.clk2x = Signal()
