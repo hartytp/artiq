@@ -119,8 +119,8 @@ class WRPLL(Module, AutoCSR):
         main_tag_sys = Signal(N)
         self.specials += MultiReg(self.collector.out_main, main_diff_tag_sys)
         self.specials += MultiReg(self.collector.out_helper, helper_diff_tag_sys)
-        self.specials += MultiReg(self.collector.tag_ref, ref_tag_sys)
-        self.specials += MultiReg(self.collector.tag_main, main_tag_sys)
+        self.specials += MultiReg(self.collector.out_tag_ref, ref_tag_sys)
+        self.specials += MultiReg(self.collector.out_tag_main, main_tag_sys)
 
         self.sync += [
             If(self.tag_arm.re & self.tag_arm.r, self.tag_arm.w.eq(1)),
