@@ -113,8 +113,8 @@ class WRPLL(Module, AutoCSR):
 
         main_diff_tag_sys = Signal((32, True))
         helper_diff_tag_sys = Signal((32, True))
-        ref_tag_sys = Signal(N)
-        main_tag_sys = Signal(N)
+        ref_tag_sys = Signal(32)
+        main_tag_sys = Signal(32)
         main_adpll_sys = Signal((32, True))
         helper_adpll_sys = Signal((32, True))
         self.specials += MultiReg(self.collector.out_main, main_diff_tag_sys)

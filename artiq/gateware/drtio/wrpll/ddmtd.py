@@ -144,7 +144,7 @@ class Collector(Module):
     signals, this would significantly extend the overall glitch-free
     range of the PLL and may aid lock acquisition.
     """
-    def __init__(self, N):
+    def __init__(self):
         self.ref_stb = Signal()
         self.main_stb = Signal()
         self.tag_ref = Signal(64)
@@ -156,8 +156,8 @@ class Collector(Module):
         self.out_tag_ref = Signal(64)
         self.out_tag_main = Signal(64)
 
-        tag_ref_r = Signal(N)
-        tag_main_r = Signal(N)
+        tag_ref_r = Signal(64)
+        tag_main_r = Signal(64)
         main_tag_diff = Signal((48, True))
         helper_tag_diff = Signal((48, True))
 
