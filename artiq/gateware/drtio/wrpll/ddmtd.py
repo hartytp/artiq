@@ -161,6 +161,18 @@ class Collector(Module):
         main_tag_diff = Signal((48, True))
         helper_tag_diff = Signal((48, True))
 
+        # These signals allow us to handle a corner-case where e.g. a second
+        # ref tag lands while we are in the WAITMAIN stage. This can easily
+        # happen, for example, if the ref/main tags are approximately a beat
+        # period apart, so a bit of jitter can lead to two ref tags before we
+        # get a main tag.
+        # The handling of this corner case isn't that robust (there is probably
+        # a better way) and there are edge cases (probability ~ 1/2**N) that
+        # we do not attempt to handle. For example, we don't handle the case
+        # where we miss a ref tag while we're in the DIFF/OUTPUT states...
+        tag_ref_waiting = Signal(64)
+        tag_main_waiting = Signal(64)
+
         # # #
 
         fsm = FSM(reset_state="IDLE")
@@ -168,6 +180,16 @@ class Collector(Module):
 
         fsm.act("IDLE",
             NextValue(self.out_stb, 0),
+            If(tag_ref_waiting != 0,
+                NextValue(tag_ref_r, tag_ref_waiting),
+                NextValue(tag_ref_waiting, 0),
+                NextState("WAITMAIN")
+            ),
+            If(tag_main_waiting != 0,
+                NextValue(tag_main_r, tag_main_waiting),
+                NextValue(tag_main_waiting, 0),
+                NextState("WAITREF")
+            ),
             If(self.ref_stb & self.main_stb,
                 NextValue(tag_ref_r, self.tag_ref),
                 NextValue(tag_main_r, self.tag_main),
@@ -181,12 +203,14 @@ class Collector(Module):
             )
         )
         fsm.act("WAITREF",
+            If(self.main_stb, NextValue(tag_main_waiting, self.tag_main)),
             If(self.ref_stb,
                 NextValue(tag_ref_r, self.tag_ref),
                 NextState("DIFF")
             )
         )
         fsm.act("WAITMAIN",
+            If(self.ref_stb, NextValue(tag_ref_waiting, self.tag_ref)),
             If(self.main_stb,
                 NextValue(tag_main_r, self.tag_main),
                 NextState("DIFF")
