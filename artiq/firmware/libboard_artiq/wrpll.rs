@@ -520,9 +520,9 @@ fn select_recovered_clock_int(rc: bool) -> Result<(), &'static str> {
 
         clock::spin_us(100_000);
 
-        let mut helper_diffs = [0; NUM_TAGS];  // input to helper loop filter
-        let mut ref_tags = [0; NUM_TAGS];
-        let mut helper_adplls = [0; NUM_TAGS];
+        let mut helper_diffs = [0; 100];  // input to helper loop filter
+        let mut ref_tags = [0; 100];
+        let mut helper_adplls = [0; 100];
         for idx in 0..100 {
             let (_, helper_diff, ref_tag, _, _, helper_apll) = get_tags();
             helper_diffs[idx] = helper_diff;

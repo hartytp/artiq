@@ -139,7 +139,9 @@ class WRPLL(Module, AutoCSR):
                   main_diff_tag_32.eq(main_diff_tag_sys),
                   helper_diff_tag_32.eq(helper_diff_tag_sys),
                   self.ref_tag.status.eq(ref_tag_sys),
-                  self.main_tag.status.eq(main_tag_sys)
+                  self.main_tag.status.eq(main_tag_sys),
+                  self.helper_adpll.status.eq(helper_adpll_sys),
+                  self.main_adpll.status.eq(main_adpll_sys),
                  )
               )
         ]
@@ -155,7 +157,7 @@ class WRPLL(Module, AutoCSR):
             self.helper_dcxo.adpll_stb.eq(self.filter_helper.output_stb),
             self.helper_dcxo.adpll.eq(self.filter_helper.output + self.adpll_offset_helper.storage),
             self.main_dcxo.adpll_stb.eq(self.filter_main.output_stb),
-            self.main_dcxo.adpll.eq(self.filter_main.output + self.adpll_offset_main.storage)
+            self.main_dcxo.adpll.eq(self.filter_main.output + self.adpll_offset_main.storage),
 
             If(self.filter_main.output_stb, main_adpll.eq(self.filter_main.output)),
             If(self.filter_helper.output_stb, helper_adpll.eq(self.filter_helper.output)),
