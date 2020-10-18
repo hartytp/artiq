@@ -18,7 +18,7 @@ def helper(tag_diff):
 
     helper_xn0 = 0 - tag_diff # *(2**22)
 
-    helper_yr = 4294967296
+    helper_yr = 1048576
 
     helper_yn2 = helper_yn1
     helper_yn1 = helper_yn0

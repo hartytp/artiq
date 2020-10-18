@@ -528,10 +528,10 @@ fn select_recovered_clock_int(rc: bool) -> Result<(), &'static str> {
         let mut main_tags = [0; 1000];
         let mut helper_adplls = [0; 1000];
         for idx in 0..1000 {
-            let (_, helper_diff, _, main_tag, _, helper_apll) = get_tags();
+            let (_, helper_diff, _, main_tag, _, tag_helper_adpll) = get_tags();
             helper_diffs[idx] = helper_diff;
             main_tags[idx] = main_tag;
-            helper_adplls[idx] = helper_adpll;
+            helper_adplls[idx] = tag_helper_adpll;
         }
         for idx in 0..200 {
             info!("main tag {}, helper_diff {}, helper adpll {}", main_tags[idx], helper_diffs[idx], helper_adplls[idx]);
@@ -541,10 +541,10 @@ fn select_recovered_clock_int(rc: bool) -> Result<(), &'static str> {
         clock::spin_us(1_000_000);
 
         for idx in 0..1000 {
-            let (_, helper_diff, _, main_tag, _, helper_apll) = get_tags();
+            let (_, helper_diff, _, main_tag, _, tag_helper_adpll) = get_tags();
             helper_diffs[idx] = helper_diff;
             main_tags[idx] = main_tag;
-            helper_adplls[idx] = helper_adpll;
+            helper_adplls[idx] = tag_helper_adpll;
         }
         for idx in 0..200 {
             info!("main tag {}, helper_diff {}, helper adpll {}", main_tags[idx], helper_diffs[idx], helper_adplls[idx]);
