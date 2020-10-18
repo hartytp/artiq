@@ -502,15 +502,15 @@ fn select_recovered_clock_int(rc: bool) -> Result<(), &'static str> {
         print_tags();
 
         info!("increasing main DCXO by 1ppm (125Hz):");
-        si549::set_adpll(i2c::Dcxo::Main, main_adpll + 8591).expect("ADPLL write failed");
+        si549::set_adpll(i2c::Dcxo::Main, main_adpll + 17182).expect("ADPLL write failed");
         clock::spin_us(100_000);
         print_tags();
 
-//        si549::set_adpll(i2c::Dcxo::Main, main_adpll).expect("ADPLL write failed");
+        si549::set_adpll(i2c::Dcxo::Main, main_adpll).expect("ADPLL write failed");
        
         unsafe {
             csr::wrpll::adpll_offset_helper_write(helper_adpll as u32);
-            csr::wrpll::adpll_offset_main_write((main_adpll + 8591) as u32);
+            csr::wrpll::adpll_offset_main_write((main_adpll) as u32);
             info!("new ADPLL: {} {}",
                 si549::get_adpll(i2c::Dcxo::Helper)?,
                 si549::get_adpll(i2c::Dcxo::Main)?,
@@ -537,8 +537,10 @@ fn select_recovered_clock_int(rc: bool) -> Result<(), &'static str> {
             info!("main tag {}, helper_diff {}, helper adpll {}", main_tags[idx], helper_diffs[idx], helper_adplls[idx]);
         }
 
+
+        unsafe { csr::wrpll::helper_dcxo_errors_write(0); }  // ignore errors during init
         info!("sleep.....");
-        clock::spin_us(1_000_000);
+        clock::spin_us(10_000_000);
 
         for idx in 0..1000 {
             let (_, helper_diff, _, main_tag, _, tag_helper_adpll) = get_tags();
