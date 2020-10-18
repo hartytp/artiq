@@ -321,7 +321,40 @@ fn log_frequencies() -> (u32, u32, u32) {
     (f_helper, f_main, f_cdr)
 }
 
-fn get_tags() -> (i32, i32, u16, u16) {
+fn unwrap(input: &[u16], output: &mut [f32]) {
+    const THRESH: f32 = (1 << (DDMTD_COUNTER_N-1)) as f32;
+    let mut offset: f32 = 0.;
+    output[0] = input[0] as f32;
+
+    for i in 1..input.len() {
+        if (input[i] as f32 - input[i-1] as f32) > THRESH {
+            offset -= DDMTD_COUNTER_M as f32 + 1.;
+        }
+        else if (input[i] as f32 - input[i-1] as f32) < -THRESH {
+            offset += DDMTD_COUNTER_M as f32 + 1.0;
+        }
+        output[i] = input[i] as f32 + offset;
+    }
+}
+
+fn get_stats(tags: &[u16]) -> (f32, f32) {
+    const NUM_TAGS: usize = 30;
+    let mut tags_u = [0 as f32; NUM_TAGS];
+    unwrap(&tags[..], &mut tags_u);
+    let mut delta_tag: f32 = 0.;
+    for i in 1..NUM_TAGS {
+        delta_tag += (tags_u[i] - tags_u[i-1]) / (NUM_TAGS-1) as f32;
+    }
+    let mut jitter = 0.;
+    for i in 1..NUM_TAGS {
+        jitter += (((tags_u[i] - tags_u[i-1]) - delta_tag) as i32).abs() as f32 / (NUM_TAGS-1) as f32;
+    }
+    let delta_phi = delta_tag / DDMTD_COUNTER_M as f32;
+    let delta_f = delta_phi / TIME_STEP as f32;
+    (delta_f, jitter)
+}
+
+fn get_tags() -> (i32, i32, u16, u16, i32, i32) {
     unsafe {
         csr::wrpll::tag_arm_write(1);
         while csr::wrpll::tag_arm_read() != 0 {}
@@ -330,7 +363,9 @@ fn get_tags() -> (i32, i32, u16, u16) {
         let helper_diff = csr::wrpll::helper_diff_tag_read() as i32;
         let ref_tag = csr::wrpll::ref_tag_read();
         let main_tag = csr::wrpll::main_tag_read();
-        (main_diff, helper_diff, ref_tag, main_tag)
+        let main_adpll = csr::wrpll::main_adpll_read() as i32;
+        let helper_adpll = csr::wrpll::helper_adpll_read() as i32;
+        (main_diff, helper_diff, ref_tag, main_tag, main_adpll, helper_adpll)
     }
 }
 
@@ -343,32 +378,24 @@ fn print_tags() {
     let mut jitter = [0 as f32; NUM_TAGS];
 
     for i in 0..NUM_TAGS {
-        let (main_diff, helper_diff, ref_tag, main_tag) = get_tags();
+        let (main_diff, helper_diff, ref_tag, main_tag, _, _) = get_tags();
         main_diffs[i] =  main_diff;
         helper_diffs[i] = helper_diff;
         ref_tags[i] = ref_tag;
         main_tags[i] = main_tag;
     }
-    info!("DDMTD ref tags: {:?}", ref_tags);
-    info!("DDMTD main tags: {:?}", main_tags);
-    info!("DDMTD main diffs: {:?}", main_diffs);
-    info!("DDMTD helper diffs: {:?}", helper_diffs);
 
-    // look at the difference between the main DCXO and reference...
-    let t0 = main_diffs[0];
-    main_diffs.iter_mut().for_each(|x| *x -= t0);
+    // info!("DDMTD ref tags: {:?}", ref_tags);
+    // info!("DDMTD main tags: {:?}", main_tags);
+    // info!("DDMTD main diffs: {:?}", main_diffs);
+    // info!("DDMTD helper diffs: {:?}", helper_diffs);
 
-    // crude estimate of the max difference across our sample set (assumes no unwrapping issues...)
-    let delta = main_diffs[main_diffs.len()-1] as f32 / (main_diffs.len()-1) as f32;
-    info!("detla: {:?} tags", delta);
-    let delta_f: f32 = delta/DDMTD_COUNTER_M as f32 * F_BEAT as f32;
-    info!("MAIN <-> ref frequency difference: {:?} Hz ({:?} ppm)", delta_f, delta_f/F_HELPER as f32 * 1e6);
+    let (delta_f_main, jitter_main) = get_stats(&main_tags[..]);
+    info!("MAIN <-> helper frequency difference: {:?} Hz ({:?} ppm), jitter {:?} ps ({:?} tags)", delta_f_main, delta_f_main/F_HELPER as f32 * 1e6, jitter_main*0.25, jitter_main);
 
-    jitter.iter_mut().enumerate().for_each(|(i, x)| *x = main_diffs[i] as f32 - delta*(i as f32));
-    info!("jitter: {:?} tags", jitter);
+    let (delta_f_ref, jitter_ref) = get_stats(&ref_tags[..]);
+    info!("REF <-> helper frequency difference: {:?} Hz ({:?} ppm), jitter {:?} ps ({:?} tags)", delta_f_ref, delta_f_ref/F_HELPER as f32 * 1e6, jitter_ref*0.25, jitter_ref);
 
-    let var = jitter.iter().map(|x| x*x).fold(0 as f32, |acc, x| acc + x as f32) / NUM_TAGS as f32;
-    info!("variance: {:?} tags^2", var);
 }
 
 pub fn init() {
@@ -398,15 +425,16 @@ pub fn init() {
     clock::spin_us(1);
 }
 
+// TO DO: REMOVE
 pub fn diagnostics() {
-    info!("WRPLL diagnostics...");
-    info!("Untrimmed oscillator frequencies:");
-    log_frequencies();
+    // info!("WRPLL diagnostics...");
+    // info!("Untrimmed oscillator frequencies:");
+    // log_frequencies();
 
-    info!("Increase helper DCXO frequency by +10ppm (1.25kHz):");
-    si549::set_adpll(i2c::Dcxo::Helper, 85911).expect("ADPLL write failed");
+    // info!("Increase helper DCXO frequency by +10ppm (1.25kHz):");
+    // si549::set_adpll(i2c::Dcxo::Helper, 85911).expect("ADPLL write failed");
     // to do: add check on frequency?
-    log_frequencies();
+    // log_frequencies();
 }
 
 fn trim_dcxos(f_helper: u32, f_main: u32, f_cdr: u32) -> Result<(i32, i32), &'static str> {
@@ -459,6 +487,9 @@ fn statistics(data: &[u16]) -> (f32, f32) {
 }
 
 fn select_recovered_clock_int(rc: bool) -> Result<(), &'static str> {
+    si549::set_adpll(i2c::Dcxo::Helper, 0).expect("ADPLL write failed");
+    si549::set_adpll(i2c::Dcxo::Main, 0).expect("ADPLL write failed");
+
     info!("Untrimmed oscillator frequencies:");
     let (f_helper, f_main, f_cdr) = log_frequencies();
     if rc {
@@ -467,7 +498,6 @@ fn select_recovered_clock_int(rc: bool) -> Result<(), &'static str> {
         si549::set_adpll(i2c::Dcxo::Helper, helper_adpll).expect("ADPLL write failed");
         si549::set_adpll(i2c::Dcxo::Main, main_adpll).expect("ADPLL write failed");
 
-        log_frequencies();
         clock::spin_us(100_000);  // TO DO: remove/reduce!
         print_tags();
 
@@ -490,12 +520,18 @@ fn select_recovered_clock_int(rc: bool) -> Result<(), &'static str> {
 
         clock::spin_us(100_000);
 
-        print_tags();
-//        let mut tags = [0; 10];
-//        for i in 0..tags.len() {
-//            tags[i] = get_ddmtd_helper_tag();
-//        }
-//        info!("DDMTD helper tags: {:?}", tags);
+        let mut helper_diffs = [0; NUM_TAGS];  // input to helper loop filter
+        let mut ref_tags = [0; NUM_TAGS];
+        let mut helper_adplls = [0; NUM_TAGS];
+        for idx in 0..100 {
+            let (_, helper_diff, ref_tag, _, _, helper_apll) = get_tags();
+            helper_diffs[idx] = helper_diff;
+            ref_tags[idx] = ref_tag;
+            helper_adplls[idx] = helper_adpll;
+        }
+        for idx in 0..100 {
+            info!("ref tag {}, helper_diff {}, helper adpll {}", ref_tags[idx], helper_diffs[idx], helper_adplls[idx]);
+        }
 
         unsafe {
             csr::wrpll::filter_reset_write(1);

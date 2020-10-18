@@ -60,6 +60,11 @@ class WRPLL(Module, AutoCSR):
         self.helper_diff_tag = CSRStatus(32)
         self.ref_tag = CSRStatus(N)
         self.main_tag = CSRStatus(N)
+        self.main_adpll = CSRStatus(32)
+        self.helper_adpll = CSRStatus(32)
+
+        main_adpll = Signal((32, True))
+        helper_adpll = Signal((32, True))
 
         main_diff_tag_32 = Signal((32, True))
         helper_diff_tag_32 = Signal((32, True))
@@ -117,10 +122,14 @@ class WRPLL(Module, AutoCSR):
         helper_diff_tag_sys = Signal((N+2, True))
         ref_tag_sys = Signal(N)
         main_tag_sys = Signal(N)
+        main_adpll_sys = Signal((32, True))
+        helper_adpll_sys = Signal((32, True))
         self.specials += MultiReg(self.collector.out_main, main_diff_tag_sys)
         self.specials += MultiReg(self.collector.out_helper, helper_diff_tag_sys)
         self.specials += MultiReg(self.collector.out_tag_ref, ref_tag_sys)
         self.specials += MultiReg(self.collector.out_tag_main, main_tag_sys)
+        self.specials += MultiReg(main_adpll, main_adpll_sys)
+        self.specials += MultiReg(helper_adpll, helper_adpll_sys)
 
         self.sync += [
             If(self.tag_arm.re & self.tag_arm.r, self.tag_arm.w.eq(1)),
@@ -147,4 +156,7 @@ class WRPLL(Module, AutoCSR):
             self.helper_dcxo.adpll.eq(self.filter_helper.output + self.adpll_offset_helper.storage),
             self.main_dcxo.adpll_stb.eq(self.filter_main.output_stb),
             self.main_dcxo.adpll.eq(self.filter_main.output + self.adpll_offset_main.storage)
+
+            If(self.filter_main.output_stb, main_adpll.eq(self.filter_main.output)),
+            If(self.filter_helper.output_stb, helper_adpll.eq(self.filter_helper.output)),
         ]
