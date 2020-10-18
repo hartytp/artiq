@@ -49,7 +49,7 @@ class FrequencyCounter(Module, AutoCSR):
 
 
 class WRPLL(Module, AutoCSR):
-    def __init__(self, helper_clk_pads, main_dcxo_i2c, helper_dxco_i2c, ddmtd_inputs, N=15):
+    def __init__(self, helper_clk_pads, main_dcxo_i2c, helper_dxco_i2c, ddmtd_inputs):
         self.helper_reset = CSRStorage(reset=1)
         self.filter_reset = CSRStorage(reset=1)
         self.adpll_offset_helper = CSRStorage(24)
@@ -58,20 +58,13 @@ class WRPLL(Module, AutoCSR):
         self.tag_arm = CSR()
         self.main_diff_tag = CSRStatus(32)
         self.helper_diff_tag = CSRStatus(32)
-        self.ref_tag = CSRStatus(N)
-        self.main_tag = CSRStatus(N)
+        self.ref_tag = CSRStatus(32)
+        self.main_tag = CSRStatus(32)
         self.main_adpll = CSRStatus(32)
         self.helper_adpll = CSRStatus(32)
 
         main_adpll = Signal((32, True))
         helper_adpll = Signal((32, True))
-
-        main_diff_tag_32 = Signal((32, True))
-        helper_diff_tag_32 = Signal((32, True))
-        self.comb += [
-            self.main_diff_tag.status.eq(main_diff_tag_32),
-            self.helper_diff_tag.status.eq(helper_diff_tag_32)
-        ]
 
         self.clock_domains.cd_helper = ClockDomain()
         self.clock_domains.cd_filter = ClockDomain()
@@ -92,14 +85,14 @@ class WRPLL(Module, AutoCSR):
         # for diagnostics and PLL initialization
         self.submodules.frequency_counter = FrequencyCounter()
 
-        ddmtd_counter = Signal(N)
+        ddmtd_counter = Signal(64)
         self.sync.helper += ddmtd_counter.eq(ddmtd_counter + 1)
         self.submodules.ddmtd_ref = DDMTD(ddmtd_counter, ddmtd_inputs.rec_clk)
         self.submodules.ddmtd_main = DDMTD(ddmtd_counter, ddmtd_inputs.main_xo)
 
         filter_cd = ClockDomainsRenamer("filter")
         helper_cd = ClockDomainsRenamer("helper")
-        self.submodules.collector = helper_cd(Collector(N))
+        self.submodules.collector = helper_cd(Collector())
         self.submodules.filter_helper = filter_cd(
             thls.make(filters.helper, data_width=48))
         self.submodules.filter_main = filter_cd(
@@ -118,8 +111,8 @@ class WRPLL(Module, AutoCSR):
         collector_stb_sys = Signal()
         self.sync += collector_stb_sys.eq(collector_stb_ps.o)
 
-        main_diff_tag_sys = Signal((N+2, True))
-        helper_diff_tag_sys = Signal((N+2, True))
+        main_diff_tag_sys = Signal((32, True))
+        helper_diff_tag_sys = Signal((32, True))
         ref_tag_sys = Signal(N)
         main_tag_sys = Signal(N)
         main_adpll_sys = Signal((32, True))
@@ -136,8 +129,8 @@ class WRPLL(Module, AutoCSR):
             If(collector_stb_sys,
                self.tag_arm.w.eq(0),
                If(self.tag_arm.w,
-                  main_diff_tag_32.eq(main_diff_tag_sys),
-                  helper_diff_tag_32.eq(helper_diff_tag_sys),
+                  self.main_diff_tag.status.eq(main_diff_tag_sys),
+                  self.helper_diff_tag.status.eq(helper_diff_tag_sys),
                   self.ref_tag.status.eq(ref_tag_sys),
                   self.main_tag.status.eq(main_tag_sys),
                   self.helper_adpll.status.eq(helper_adpll_sys),

@@ -147,19 +147,19 @@ class Collector(Module):
     def __init__(self, N):
         self.ref_stb = Signal()
         self.main_stb = Signal()
-        self.tag_ref = Signal(N)
-        self.tag_main = Signal(N)
+        self.tag_ref = Signal(64)
+        self.tag_main = Signal(64)
 
         self.out_stb = Signal()
-        self.out_main = Signal((N+2, True))
-        self.out_helper = Signal((N+2, True))
-        self.out_tag_ref = Signal(N)
-        self.out_tag_main = Signal(N)
+        self.out_main = Signal((48, True))
+        self.out_helper = Signal((48, True))
+        self.out_tag_ref = Signal(64)
+        self.out_tag_main = Signal(64)
 
         tag_ref_r = Signal(N)
         tag_main_r = Signal(N)
-        main_tag_diff = Signal((N+2, True))
-        helper_tag_diff = Signal((N+2, True))
+        main_tag_diff = Signal((48, True))
+        helper_tag_diff = Signal((48, True))
 
         # # #
 
@@ -194,21 +194,7 @@ class Collector(Module):
         )
         fsm.act("DIFF",
             NextValue(main_tag_diff, tag_main_r - tag_ref_r),
-            NextValue(helper_tag_diff, tag_main_r - self.out_tag_main),
-            NextState("UNWRAP")
-        )
-        fsm.act("UNWRAP",
-            If(main_tag_diff - self.out_main > 2**(N-1),
-               NextValue(main_tag_diff, main_tag_diff - 2**N)
-            ).Elif(self.out_main - main_tag_diff > 2**(N-1),
-               NextValue(main_tag_diff, main_tag_diff + 2**N)
-            ),
-
-            If(helper_tag_diff - self.out_helper > 2**(N-1),
-               NextValue(helper_tag_diff, helper_tag_diff - 2**N)
-            ).Elif(self.out_helper - helper_tag_diff > 2**(N-1),
-               NextValue(helper_tag_diff, helper_tag_diff + 2**N)
-            ),
+            NextValue(helper_tag_diff, tag_main_r - self.out_tag_main - 2**15),
             NextState("OUTPUT")
         )
         fsm.act("OUTPUT",
