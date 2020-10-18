@@ -156,9 +156,11 @@ class WRPLL(Module, AutoCSR):
         self.sync.helper += [
             self.helper_dcxo.adpll_stb.eq(self.filter_helper.output_stb),
             self.helper_dcxo.adpll.eq(self.filter_helper.output + self.adpll_offset_helper.storage),
-            self.main_dcxo.adpll_stb.eq(self.filter_main.output_stb),
-            self.main_dcxo.adpll.eq(self.filter_main.output + self.adpll_offset_main.storage),
+            # self.main_dcxo.adpll_stb.eq(self.filter_main.output_stb),
+            # self.main_dcxo.adpll.eq(self.filter_main.output + self.adpll_offset_main.storage),
+            self.main_dcxo.adpll.eq(self.adpll_offset_main.storage),
+            self.main_dcxo.adpll_stb.eq(0),
 
-            If(self.filter_main.output_stb, main_adpll.eq(self.filter_main.output)),
-            If(self.filter_helper.output_stb, helper_adpll.eq(self.filter_helper.output)),
+            main_adpll.eq(self.filter_main.output),
+            helper_adpll.eq(self.helper_dcxo.adpll),
         ]

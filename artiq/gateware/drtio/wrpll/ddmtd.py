@@ -194,7 +194,7 @@ class Collector(Module):
         )
         fsm.act("DIFF",
             NextValue(main_tag_diff, tag_main_r - tag_ref_r),
-            NextValue(helper_tag_diff, tag_ref_r - self.out_tag_ref),
+            NextValue(helper_tag_diff, tag_main_r - self.out_tag_main),
             NextState("UNWRAP")
         )
         fsm.act("UNWRAP",

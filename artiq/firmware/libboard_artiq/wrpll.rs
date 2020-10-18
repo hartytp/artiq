@@ -506,11 +506,15 @@ fn select_recovered_clock_int(rc: bool) -> Result<(), &'static str> {
         clock::spin_us(100_000);
         print_tags();
 
-        si549::set_adpll(i2c::Dcxo::Main, main_adpll).expect("ADPLL write failed");
-
+//        si549::set_adpll(i2c::Dcxo::Main, main_adpll).expect("ADPLL write failed");
+       
         unsafe {
             csr::wrpll::adpll_offset_helper_write(helper_adpll as u32);
-            csr::wrpll::adpll_offset_main_write(main_adpll as u32);
+            csr::wrpll::adpll_offset_main_write((main_adpll + 8591) as u32);
+            info!("new ADPLL: {} {}",
+                si549::get_adpll(i2c::Dcxo::Helper)?,
+                si549::get_adpll(i2c::Dcxo::Main)?,
+            );
             csr::wrpll::helper_dcxo_gpio_enable_write(0);
             csr::wrpll::main_dcxo_gpio_enable_write(0);
             csr::wrpll::helper_dcxo_errors_write(0xff);
@@ -518,19 +522,32 @@ fn select_recovered_clock_int(rc: bool) -> Result<(), &'static str> {
             csr::wrpll::filter_reset_write(0);
         }
 
-        clock::spin_us(100_000);
+        // clock::spin_us(100_000);
 
-        let mut helper_diffs = [0; 100];  // input to helper loop filter
-        let mut ref_tags = [0; 100];
-        let mut helper_adplls = [0; 100];
-        for idx in 0..100 {
-            let (_, helper_diff, ref_tag, _, _, helper_apll) = get_tags();
+        let mut helper_diffs = [0; 1000];  // input to helper loop filter
+        let mut main_tags = [0; 1000];
+        let mut helper_adplls = [0; 1000];
+        for idx in 0..1000 {
+            let (_, helper_diff, _, main_tag, _, helper_apll) = get_tags();
             helper_diffs[idx] = helper_diff;
-            ref_tags[idx] = ref_tag;
+            main_tags[idx] = main_tag;
             helper_adplls[idx] = helper_adpll;
         }
-        for idx in 0..100 {
-            info!("ref tag {}, helper_diff {}, helper adpll {}", ref_tags[idx], helper_diffs[idx], helper_adplls[idx]);
+        for idx in 0..200 {
+            info!("main tag {}, helper_diff {}, helper adpll {}", main_tags[idx], helper_diffs[idx], helper_adplls[idx]);
+        }
+
+        info!("sleep.....");
+        clock::spin_us(1_000_000);
+
+        for idx in 0..1000 {
+            let (_, helper_diff, _, main_tag, _, helper_apll) = get_tags();
+            helper_diffs[idx] = helper_diff;
+            main_tags[idx] = main_tag;
+            helper_adplls[idx] = helper_adpll;
+        }
+        for idx in 0..200 {
+            info!("main tag {}, helper_diff {}, helper adpll {}", main_tags[idx], helper_diffs[idx], helper_adplls[idx]);
         }
 
         unsafe {
