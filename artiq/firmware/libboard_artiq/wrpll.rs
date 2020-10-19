@@ -331,7 +331,7 @@ fn get_stats(tags: &[u32]) -> (f32, f32) {
 
     let mut jitter = 0.;
     for i in 1..NUM_TAGS {
-        jitter += (((tags[i] - tags[i-1]) as f32 - delta_tag) as i32).abs() as f32 / (NUM_TAGS-1) as f32;
+        jitter += (((tags[i] - tags[i-1]) as f32 - DDMTD_COUNTER_M as f32 - delta_tag) as i32).abs() as f32 / (NUM_TAGS-1) as f32;
     }
     let delta_phi = delta_tag / DDMTD_COUNTER_M as f32;
     let delta_f = delta_phi / TIME_STEP as f32;
