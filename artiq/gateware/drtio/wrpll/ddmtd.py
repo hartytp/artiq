@@ -156,76 +156,118 @@ class Collector(Module):
         self.out_tag_ref = Signal(64)
         self.out_tag_main = Signal(64)
 
-        tag_ref_r = Signal(64)
-        tag_main_r = Signal(64)
-        main_tag_diff = Signal((48, True))
-        helper_tag_diff = Signal((48, True))
+        tag_ref_r = Signal((64, True))
+        tag_main_r = Signal((64, True))
+        tag_ref_expected = Signal((64, True), reset=2**15)
+        tag_main_expected = Signal((64, True), reset=2**15)
+        tag_ref_diff = Signal((64, True))
+        tag_main_diff = Signal((64, True))
+        tag_ref_offset = Signal((64, True))
+        tag_main_offset = Signal((64, True))
 
-        # These signals allow us to handle a corner-case where e.g. a second
-        # ref tag lands while we are in the WAITMAIN stage. This can easily
-        # happen, for example, if the ref/main tags are approximately a beat
-        # period apart, so a bit of jitter can lead to two ref tags before we
-        # get a main tag.
-        # The handling of this corner case isn't that robust (there is probably
-        # a better way) and there are edge cases (probability ~ 1/2**N) that
-        # we do not attempt to handle. For example, we don't handle the case
-        # where we miss a ref tag while we're in the DIFF/OUTPUT states...
-        tag_ref_waiting = Signal(64)
-        tag_main_waiting = Signal(64)
+        # While the PLL is locking we can easily get a second of one tag while
+        # we are waiting for the other (either due to jitter or due to one
+        # frequency being higher than the other)
+        ref_early = Signal()
+        main_early = Signal()
+        ref_stb = Signal()
+        main_stb = Signal()
 
         # # #
+
+        self.comb += [
+            ref_stb.eq(ref_early | self.ref_stb),
+            main_stb.eq(main_early | main_stb)
+        ]
 
         fsm = FSM(reset_state="IDLE")
         self.submodules += fsm
 
         fsm.act("IDLE",
             NextValue(self.out_stb, 0),
-            If(tag_ref_waiting != 0,
-                NextValue(tag_ref_r, tag_ref_waiting),
-                NextValue(tag_ref_waiting, 0),
-                NextState("WAITMAIN")
-            ),
-            If(tag_main_waiting != 0,
-                NextValue(tag_main_r, tag_main_waiting),
-                NextValue(tag_main_waiting, 0),
-                NextState("WAITREF")
-            ),
-            If(self.ref_stb & self.main_stb,
+            NextValue(ref_early, 0),
+            NextValue(main_early, 0),
+
+            If(ref_stb & main_stb,
                 NextValue(tag_ref_r, self.tag_ref),
                 NextValue(tag_main_r, self.tag_main),
                 NextState("DIFF")
-            ).Elif(self.ref_stb,
+            ).Elif(ref_stb,
                 NextValue(tag_ref_r, self.tag_ref),
                 NextState("WAITMAIN")
-            ).Elif(self.main_stb,
+            ).Elif(main_stb,
                 NextValue(tag_main_r, self.tag_main),
                 NextState("WAITREF")
             )
         )
         fsm.act("WAITREF",
-            If(self.main_stb, NextValue(tag_main_waiting, self.tag_main)),
+            If(self.main_stb, NextValue(main_early, 1)),
             If(self.ref_stb,
                 NextValue(tag_ref_r, self.tag_ref),
                 NextState("DIFF")
             )
         )
         fsm.act("WAITMAIN",
-            If(self.ref_stb, NextValue(tag_ref_waiting, self.tag_ref)),
+            If(self.ref_stb, NextValue(ref_early, 1)),
             If(self.main_stb,
                 NextValue(tag_main_r, self.tag_main),
                 NextState("DIFF")
             )
         )
         fsm.act("DIFF",
-            NextValue(main_tag_diff, tag_main_r - tag_ref_r),
-            NextValue(helper_tag_diff, tag_main_r - self.out_tag_main - 2**15),
+            If(self.ref_stb, NextValue(ref_early, 1)),
+            If(self.main_stb, NextValue(main_early, 1)),
+
+            NextValue(tag_ref_expected, tag_ref_r + 2**15),
+            NextValue(tag_main_expected, tag_main_r + 2**15),
+            NextValue(tag_ref_diff, tag_ref_r - tag_ref_expected),
+            NextValue(tag_main_diff, tag_main_r - tag_main_expected),
+
+            NextState("UNWRAP")
+        )
+        fsm.act("UNWRAP"
+            If(self.ref_stb, NextValue(ref_early, 1)),
+            If(self.main_stb, NextValue(main_early, 1)),
+
+            If(tag_ref_diff > 2**14,
+               NextValue(tag_ref_offset, tag_ref_offset - 2**15)
+            ),
+            If(tag_main_diff > 2**14,
+               NextValue(tag_main_offset, tag_main_offset - 2**15),
+               NextValue(self.out_helper, tag_main_diff - 2**15),
+            ),
+            NextState("UNWRAP2")
+        )
+        fsm.act("UNWRAP2"
+            If(self.ref_stb, NextValue(ref_early, 1)),
+            If(self.main_stb, NextValue(main_early, 1)),
+
+            If(tag_ref_diff < -2**14,
+               NextValue(tag_ref_offset, tag_ref_offset + 2**15)
+            ),
+            If(tag_main_diff < -2**14,
+               NextValue(tag_main_offset, tag_main_offset + 2**15),
+              NextValue(self.out_helper, tag_main_diff + 2**15),
+            ),
+
+            NextState("UNWRAP3")
+        )
+        fsm.act("UNWRAP3"
+            If(self.ref_stb, NextValue(ref_early, 1)),
+            If(self.main_stb, NextValue(main_early, 1)),
+
+            NextValue(tag_ref_r, tag_ref_r + tag_ref_offset),
+            NextValue(tag_main_r, tag_main_r + tag_main_offset),
+
             NextState("OUTPUT")
         )
         fsm.act("OUTPUT",
+            If(self.ref_stb, NextValue(ref_early, 1)),
+            If(self.main_stb, NextValue(main_early, 1)),
+
             NextValue(self.out_tag_ref, tag_ref_r),
             NextValue(self.out_tag_main, tag_main_r),
-            NextValue(self.out_main, main_tag_diff),
-            NextValue(self.out_helper, helper_tag_diff),
+            NextValue(self.out_main, tag_main_r - tag_ref_r),
             NextValue(self.out_stb, 1),
             NextState("IDLE")
         )
