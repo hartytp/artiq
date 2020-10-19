@@ -490,11 +490,11 @@ fn select_recovered_clock_int(rc: bool) -> Result<(), &'static str> {
         clock::spin_us(100_000);
         print_tags();
 
-//        si549::set_adpll(i2c::Dcxo::Main, main_adpll).expect("ADPLL write failed");
+        si549::set_adpll(i2c::Dcxo::Main, main_adpll).expect("ADPLL write failed");
        
         unsafe {
             csr::wrpll::adpll_offset_helper_write(helper_adpll as u32);
-            csr::wrpll::adpll_offset_main_write((main_adpll + 17182) as u32);
+            csr::wrpll::adpll_offset_main_write((main_adpll) as u32);
             info!("new ADPLL: {} {}",
                 si549::get_adpll(i2c::Dcxo::Helper)?,
                 si549::get_adpll(i2c::Dcxo::Main)?,
@@ -506,38 +506,44 @@ fn select_recovered_clock_int(rc: bool) -> Result<(), &'static str> {
             csr::wrpll::filter_reset_write(0);
         }
 
-        // clock::spin_us(100_000);
 
+        let mut main_diffs = [0; 1000];  // input to helper loop filter
         let mut helper_diffs = [0; 1000];  // input to helper loop filter
         let mut main_tags = [0; 1000];
         let mut ref_tags = [0; 1000];
         let mut helper_adplls = [0; 1000];
+        let mut main_adplls = [0; 1000];
         for idx in 0..1000 {
-            let (_, helper_diff, ref_tag, main_tag, _, tag_helper_adpll) = get_tags();
+            let (main_diff, helper_diff, ref_tag, main_tag, tag_main_adpll, tag_helper_adpll) = get_tags();
+            main_diffs[idx] = main_diff;
             helper_diffs[idx] = helper_diff;
-            ref_tags[idx] = ref_tag % DDMTD_COUNTER_M;
-            main_tags[idx] = main_tag % DDMTD_COUNTER_M;
+            ref_tags[idx] = ref_tag;// % DDMTD_COUNTER_M;
+            main_tags[idx] = main_tag;// % DDMTD_COUNTER_M;
             helper_adplls[idx] = tag_helper_adpll;
+            main_adplls[idx] = tag_main_adpll;
         }
         for idx in 0..200 {
-            info!("ref_tag {}, main tag {}, helper_diff {}, helper adpll {}", ref_tags[idx], main_tags[idx], helper_diffs[idx], helper_adplls[idx]);
+            info!("ref_tag {}, main tag {}, main_diff {}, helper_diff {}, helper adpll {}, main adpll {}", ref_tags[idx], main_tags[idx], main_diffs[idx], helper_diffs[idx], helper_adplls[idx], main_adplls[idx]);
         }
 
-
-        unsafe { csr::wrpll::helper_dcxo_errors_write(0); }  // ignore errors during init
         info!("sleep.....");
         clock::spin_us(10_000_000);
+        unsafe { csr::wrpll::helper_dcxo_errors_write(0); }  // ignore errors during init
 
         for idx in 0..1000 {
-            let (_, helper_diff, ref_tag, main_tag, _, tag_helper_adpll) = get_tags();
+            let (main_diff, helper_diff, ref_tag, main_tag, tag_main_adpll, tag_helper_adpll) = get_tags();
+            main_diffs[idx] = main_diff;
             helper_diffs[idx] = helper_diff;
-            ref_tags[idx] = ref_tag % DDMTD_COUNTER_M;
-            main_tags[idx] = main_tag % DDMTD_COUNTER_M;
+            ref_tags[idx] = ref_tag;// % DDMTD_COUNTER_M;
+            main_tags[idx] = main_tag;// % DDMTD_COUNTER_M;
             helper_adplls[idx] = tag_helper_adpll;
+            main_adplls[idx] = tag_main_adpll;
         }
-        for idx in 0..200 {
-            info!("ref_tag {}, main tag {}, helper_diff {}, helper adpll {}", ref_tags[idx], main_tags[idx], helper_diffs[idx], helper_adplls[idx]);
+        for idx in 0..1000 {
+            info!("ref_tag {}, main tag {}, main_diff {}, helper_diff {}, helper adpll {}, main adpll {}", ref_tags[idx], main_tags[idx], main_diffs[idx], helper_diffs[idx], helper_adplls[idx], main_adplls[idx]);
         }
+
+        print_tags();
 
         unsafe {
             csr::wrpll::filter_reset_write(1);

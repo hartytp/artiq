@@ -154,6 +154,6 @@ class WRPLL(Module, AutoCSR):
             self.main_dcxo.adpll.eq(self.adpll_offset_main.storage),
             self.main_dcxo.adpll_stb.eq(0),
 
-            main_adpll.eq(self.filter_main.output),
+            If(self.filter_main.output_stb, main_adpll.eq(self.filter_main.output)),
             If(self.filter_helper.output_stb, helper_adpll.eq(self.filter_helper.output)),
         ]

@@ -69,7 +69,7 @@ class DDMTDSamplerGTP(Module):
 
 
 class DDMTDDeglitcherFirstEdge(Module):
-    def __init__(self, input_signal, blind_period=128):
+    def __init__(self, input_signal, blind_period=5000):
         self.detect = Signal()
         self.tag_correction = 0
 
@@ -177,7 +177,7 @@ class Collector(Module):
 
         self.comb += [
             ref_stb.eq(ref_early | self.ref_stb),
-            main_stb.eq(main_early | main_stb)
+            main_stb.eq(main_early | self.main_stb)
         ]
 
         fsm = FSM(reset_state="IDLE")
@@ -225,34 +225,34 @@ class Collector(Module):
 
             NextState("UNWRAP")
         )
-        fsm.act("UNWRAP"
+        fsm.act("UNWRAP",
             If(self.ref_stb, NextValue(ref_early, 1)),
             If(self.main_stb, NextValue(main_early, 1)),
 
             If(tag_ref_diff > 2**14,
-               NextValue(tag_ref_offset, tag_ref_offset - 2**15)
-            ),
+               NextValue(tag_ref_offset, tag_ref_offset - 2**15),
+               NextValue(self.out_helper, tag_ref_diff - 2**15),
+            ).Else(NextValue(self.out_helper, tag_ref_diff)),
             If(tag_main_diff > 2**14,
                NextValue(tag_main_offset, tag_main_offset - 2**15),
-               NextValue(self.out_helper, tag_main_diff - 2**15),
             ),
             NextState("UNWRAP2")
         )
-        fsm.act("UNWRAP2"
+        fsm.act("UNWRAP2",
             If(self.ref_stb, NextValue(ref_early, 1)),
             If(self.main_stb, NextValue(main_early, 1)),
 
             If(tag_ref_diff < -2**14,
-               NextValue(tag_ref_offset, tag_ref_offset + 2**15)
+               NextValue(tag_ref_offset, tag_ref_offset + 2**15),
+               NextValue(self.out_helper, tag_ref_diff + 2**15),
             ),
             If(tag_main_diff < -2**14,
                NextValue(tag_main_offset, tag_main_offset + 2**15),
-              NextValue(self.out_helper, tag_main_diff + 2**15),
             ),
 
             NextState("UNWRAP3")
         )
-        fsm.act("UNWRAP3"
+        fsm.act("UNWRAP3",
             If(self.ref_stb, NextValue(ref_early, 1)),
             If(self.main_stb, NextValue(main_early, 1)),
 
