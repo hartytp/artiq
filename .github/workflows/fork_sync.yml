@@ -13,6 +13,6 @@ jobs:
     steps:
       - uses: tgymnich/fork-sync@v1.4
         with:
-          owner: m-labs
-          base: master
+          owner: oxionics
+          base: sync_test
           head: master
